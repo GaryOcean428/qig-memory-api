@@ -31,13 +31,15 @@ export async function POST(req) {
   }
 
   try {
-    const harvestHeaders = { 'Content-Type': 'application/json' };
-    if (KERNEL_API_KEY_MODAL) harvestHeaders['X-Api-Key'] = KERNEL_API_KEY_MODAL;
+    // Modal fastapi_endpoint receives JSON body as dict param.
+    // Auth passed as _api_key in body (not header).
+    const harvestBody = { texts, min_contexts, target_tokens, batch_size: 16, max_length: 512 };
+    if (KERNEL_API_KEY_MODAL) harvestBody._api_key = KERNEL_API_KEY_MODAL;
 
     const harvestRes = await fetch(HARVEST_URL, {
       method: 'POST',
-      headers: harvestHeaders,
-      body: JSON.stringify({ texts, min_contexts, target_tokens, batch_size: 16, max_length: 512 })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(harvestBody)
     });
 
     if (!harvestRes.ok) {

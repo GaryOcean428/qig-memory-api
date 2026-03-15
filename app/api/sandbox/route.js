@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN || '';
+const PLATFORM_TOKEN = process.env.PLATFORM_TOKEN || '';
 const VERCEL_TEAM_ID = process.env.VERCEL_TEAM_ID || '';
 const API_KEY = process.env.QIG_API_KEY || '';
 
@@ -15,11 +15,11 @@ const SANDBOX_API = 'https://api.vercel.com/v1/sandboxes';
 // GET /api/sandbox - list active sandboxes
 export async function GET(req) {
   if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!VERCEL_TOKEN) return NextResponse.json({ error: 'VERCEL_TOKEN not set' }, { status: 500 });
+  if (!PLATFORM_TOKEN) return NextResponse.json({ error: 'PLATFORM_TOKEN not set' }, { status: 500 });
 
   const url = VERCEL_TEAM_ID ? `${SANDBOX_API}?teamId=${VERCEL_TEAM_ID}` : SANDBOX_API;
   const res = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${VERCEL_TOKEN}` }
+    headers: { 'Authorization': `Bearer ${PLATFORM_TOKEN}` }
   });
   const data = await res.json();
   return NextResponse.json(data);
@@ -29,7 +29,7 @@ export async function GET(req) {
 // Body: { action: "create" } or { action: "exec", sandboxId, command, env?, cwd? } or { action: "stop", sandboxId }
 export async function POST(req) {
   if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  if (!VERCEL_TOKEN) return NextResponse.json({ error: 'VERCEL_TOKEN not set' }, { status: 500 });
+  if (!PLATFORM_TOKEN) return NextResponse.json({ error: 'PLATFORM_TOKEN not set' }, { status: 500 });
 
   const body = await req.json();
   const teamQs = VERCEL_TEAM_ID ? `?teamId=${VERCEL_TEAM_ID}` : '';
@@ -38,7 +38,7 @@ export async function POST(req) {
     const res = await fetch(`${SANDBOX_API}${teamQs}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${VERCEL_TOKEN}`,
+        'Authorization': `Bearer ${PLATFORM_TOKEN}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -61,7 +61,7 @@ export async function POST(req) {
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${VERCEL_TOKEN}`,
+          'Authorization': `Bearer ${PLATFORM_TOKEN}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -85,7 +85,7 @@ export async function POST(req) {
       `${SANDBOX_API}/${body.sandboxId}/stop${teamQs}`,
       {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${VERCEL_TOKEN}` }
+        headers: { 'Authorization': `Bearer ${PLATFORM_TOKEN}` }
       }
     );
     const data = await res.json();

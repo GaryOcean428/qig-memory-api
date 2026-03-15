@@ -17,7 +17,7 @@ function teamQs() {
   return VERCEL_TEAM_ID ? `?teamId=${VERCEL_TEAM_ID}` : '';
 }
 
-function headers(json = false) {
+function hdrs(json = false) {
   const h = { 'Authorization': `Bearer ${PLATFORM_TOKEN}` };
   if (json) h['Content-Type'] = 'application/json';
   return h;
@@ -28,18 +28,16 @@ export async function GET(req) {
   if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!PLATFORM_TOKEN) return NextResponse.json({ error: 'PLATFORM_TOKEN not set' }, { status: 500 });
 
-  const res = await fetch(`${SANDBOX_API}${teamQs()}`, {
-    headers: headers()
-  });
+  const res = await fetch(`${SANDBOX_API}${teamQs()}`, { headers: hdrs() });
   const data = await res.json();
   return NextResponse.json(data, { status: res.status });
 }
 
 // POST /api/sandbox
 // Actions:
-//   create  - { action: "create", runtime?: "python3.13"|"node24" }
-//   exec    - { action: "exec", sandboxId, command, args?:[], env?:{}, cwd? }
-//   stop    - { action: "stop", sandboxId }
+//   create   - { action: "create", runtime?: "python3.13"|"node24" }
+//   exec     - { action: "exec", sandboxId, command, args?:[], env?:{}, cwd? }
+//   stop     - { action: "stop", sandboxId }
 //   snapshot - { action: "snapshot", sandboxId }
 export async function POST(req) {
   if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
@@ -47,30 +45,27 @@ export async function POST(req) {
 
   const body = await req.json();
 
-  // --- CREATE ---
   if (body.action === 'create') {
     const payload = {
       runtime: body.runtime || 'python3.13',
-      projectId: VERCEL_PROJECT_ID || undefined,
-      timeout: body.timeout || '600000',
+      timeout: parseInt(body.timeout) || 600000,
       networkPolicy: { mode: 'allow-all' }
     };
+    if (VERCEL_PROJECT_ID) payload.projectId = VERCEL_PROJECT_ID;
+
     const res = await fetch(`${SANDBOX_API}${teamQs()}`, {
       method: 'POST',
-      headers: headers(true),
+      headers: hdrs(true),
       body: JSON.stringify(payload)
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   }
 
-  // --- EXEC ---
   if (body.action === 'exec') {
     if (!body.sandboxId || !body.command) {
       return NextResponse.json({ error: 'sandboxId and command required' }, { status: 400 });
     }
-
-    // Support both pre-split args and string command
     let cmd, args;
     if (body.args) {
       cmd = body.command;
@@ -80,60 +75,40 @@ export async function POST(req) {
       cmd = parts[0];
       args = parts.slice(1);
     }
-
-    const res = await fetch(
-      `${SANDBOX_API}/${body.sandboxId}/cmd${teamQs()}`,
-      {
-        method: 'POST',
-        headers: headers(true),
-        body: JSON.stringify({
-          command: cmd,
-          args: args,
-          cwd: body.cwd || '/home/vercel-sandbox',
-          env: body.env || {},
-          wait: body.wait !== false
-        })
-      }
-    );
+    const res = await fetch(`${SANDBOX_API}/${body.sandboxId}/cmd${teamQs()}`, {
+      method: 'POST',
+      headers: hdrs(true),
+      body: JSON.stringify({
+        command: cmd,
+        args,
+        cwd: body.cwd || '/home/vercel-sandbox',
+        env: body.env || {},
+        wait: body.wait !== false
+      })
+    });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   }
 
-  // --- STOP ---
   if (body.action === 'stop') {
-    if (!body.sandboxId) {
-      return NextResponse.json({ error: 'sandboxId required' }, { status: 400 });
-    }
-    const res = await fetch(
-      `${SANDBOX_API}/${body.sandboxId}/stop${teamQs()}`,
-      {
-        method: 'POST',
-        headers: headers()
-      }
-    );
+    if (!body.sandboxId) return NextResponse.json({ error: 'sandboxId required' }, { status: 400 });
+    const res = await fetch(`${SANDBOX_API}/${body.sandboxId}/stop${teamQs()}`, {
+      method: 'POST', headers: hdrs()
+    });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   }
 
-  // --- SNAPSHOT ---
   if (body.action === 'snapshot') {
-    if (!body.sandboxId) {
-      return NextResponse.json({ error: 'sandboxId required' }, { status: 400 });
-    }
-    const res = await fetch(
-      `${SANDBOX_API}/${body.sandboxId}/snapshot${teamQs()}`,
-      {
-        method: 'POST',
-        headers: headers(true),
-        body: JSON.stringify({ expiration: body.expiration || '86400' })
-      }
-    );
+    if (!body.sandboxId) return NextResponse.json({ error: 'sandboxId required' }, { status: 400 });
+    const res = await fetch(`${SANDBOX_API}/${body.sandboxId}/snapshot${teamQs()}`, {
+      method: 'POST',
+      headers: hdrs(true),
+      body: JSON.stringify({ expiration: parseInt(body.expiration) || 86400 })
+    });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   }
 
-  return NextResponse.json({
-    error: 'Unknown action',
-    available: ['create', 'exec', 'stop', 'snapshot']
-  }, { status: 400 });
+  return NextResponse.json({ error: 'Unknown action', available: ['create', 'exec', 'stop', 'snapshot'] }, { status: 400 });
 }

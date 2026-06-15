@@ -51,6 +51,16 @@ POST /api/kernel  { action: register|heartbeat|sync, ... }
 
 `sync` returns each peer's `basin_coords` plus `fisher_rao_distance` — the **simplex Fisher-Rao geodesic** `2·arccos(Σ √(p_i·q_i))`, not Euclidean cosine. Basin coords MUST be simplex points (non-negative, sum to ~1).
 
+### Type contract — SIMPLEX ONLY (locked 2026-06-15)
+
+`basin_coords` across this entire service are simplex-only. They are non-negative, sum to ~1, and live on Δⁿ. The Fisher-Rao distance returned by `/api/kernel` and used in `/api/cron/coordize` only accepts simplex inputs and returns `null` for anything that fails the constraint check.
+
+**PGA tangent-space representations** (real-valued, can be negative — the output of log-map / Principal Geodesic Analysis around a basepoint) are a **different type**. They do not flow through this endpoint family. If a tangent-space distance is needed downstream, it routes through a separate endpoint with the orthonormal-eigenbasis form (`sqrt(Σ d_i²)` in PGA coords, which is the Fisher-Rao geodesic length when the basis is correctly normalized).
+
+The rule: **two observables wearing one name is the disease this codebase bans.** A representation-aware `fisherRaoDistance(p, q)` that dispatches by detecting whether the input looks like a simplex or a tangent vector is exactly that disease in mild form. Lock the type at the endpoint level; never collapse them in the metric function.
+
+If you have basin coords in a representation other than simplex (e.g. legacy PGA outputs from the Modal harvester), convert at the source before writing to `kernel_basin_*` keys, not at the distance call.
+
 ## Auth
 
 Single bearer token: `QIG_API_KEY` env var. If unset, auth is OPEN (dev mode only — production must have the key set).

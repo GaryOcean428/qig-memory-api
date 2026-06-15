@@ -108,7 +108,8 @@ export async function GET() {
     geometry: {
       distance: 'fisher_rao_simplex',
       formula: '2·arccos(Σ √(p_i·q_i))',
-      note: 'basin_coords MUST be non-negative and sum to ~1 (simplex constraint). Distance is geodesic on the Fisher-Rao manifold, NOT Euclidean cosine.',
+      type_contract: 'simplex_only',
+      note: 'basin_coords MUST be non-negative and sum to ~1 (simplex constraint). Distance is geodesic on the Fisher-Rao manifold, NOT Euclidean cosine. PGA tangent-space representations are a different type and do not flow through this endpoint — convert to simplex at the source.',
     },
     harvest_url: 'https://garyocean428--vex-coordizer-harvest-coordizerharvester-harvest.modal.run',
     memory_api: 'https://qig-memory-api.vercel.app/api/memory',

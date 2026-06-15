@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "next": "^15.1.0",
-    "@vercel/blob": "^0.27.0"
+    "@vercel/blob": "^2.4.0"
   }
 }

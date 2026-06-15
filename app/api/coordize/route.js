@@ -1,17 +1,15 @@
 import { NextResponse } from 'next/server';
+import { auth } from '../../../lib/auth.js';
 
-const API_KEY = process.env.QIG_API_KEY || '';
 const KERNEL_API_KEY = process.env.KERNEL_API_KEY || '';
 
+// TODO(architecture): This endpoint is a GPU-compute proxy and belongs in
+// qig-compute or qig-warp, not in the storage service. Co-locating it here
+// means a memory-API outage takes coordize down. Migrate in follow-up.
+//
 // Modal /coordize endpoint — does harvest + PGA on GPU, returns only 64D basin coords
 const MODAL_COORDIZE_URL = process.env.MODAL_COORDIZE_URL ||
   'https://garyocean428--vex-coordizer-harvest-coordizerharvester-coordize.modal.run';
-
-function auth(req) {
-  if (!API_KEY) return true;
-  const h = req.headers.get('authorization') || '';
-  return h === `Bearer ${API_KEY}`;
-}
 
 /**
  * POST /api/coordize

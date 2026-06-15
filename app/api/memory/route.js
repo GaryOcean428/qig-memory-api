@@ -1,16 +1,10 @@
 import { list } from '@vercel/blob';
 import { NextResponse } from 'next/server';
+import { auth } from '../../../lib/auth.js';
 
 const PREFIX = 'memory/';
-const API_KEY = process.env.QIG_API_KEY || '';
 const MAX_PAGE = 1000;
 const DEFAULT_PAGE = 100;
-
-function auth(req) {
-  if (!API_KEY) return true;
-  const h = req.headers.get('authorization') || '';
-  return h === `Bearer ${API_KEY}`;
-}
 
 // GET /api/memory
 //   ?keys_only=true         — list keys only (fast path; skips per-blob content fetch)

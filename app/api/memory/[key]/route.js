@@ -1,14 +1,8 @@
 import { put, list, del } from '@vercel/blob';
 import { NextResponse } from 'next/server';
+import { auth } from '../../../../lib/auth.js';
 
 const PREFIX = 'memory/';
-const API_KEY = process.env.QIG_API_KEY || '';
-
-function auth(req) {
-  if (!API_KEY) return true; // no key configured = open (dev)
-  const h = req.headers.get('authorization') || '';
-  return h === `Bearer ${API_KEY}`;
-}
 
 // Helper: read existing record with cache busting so writers always see their own writes.
 // Vercel Blob defaults `cacheControlMaxAge` to 1 year — without bust, the CDN can serve

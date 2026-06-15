@@ -10,33 +10,42 @@ function auth(req) {
   return h === `Bearer ${API_KEY}`;
 }
 
-// Helper: read existing record or return null
+// Helper: read existing record with cache busting so writers always see their own writes.
+// Vercel Blob defaults `cacheControlMaxAge` to 1 year — without bust, the CDN can serve
+// stale content for minutes-to-hours after an overwrite. Appending ?v=<uploadedAt> makes
+// the URL CDN-distinct on every new write.
 async function readRecord(path) {
   const result = await list({ prefix: path, limit: 1 });
   if (!result.blobs.length) return null;
   const blob = result.blobs[0];
-  const resp = await fetch(blob.url);
+  const bust = encodeURIComponent(blob.uploadedAt);
+  const resp = await fetch(`${blob.url}?v=${bust}`, { cache: 'no-store' });
   const data = await resp.json();
   return { data, blob };
 }
 
-// Helper: write record to blob store
+// Helper: write record to blob store.
+// `addRandomSuffix: false` overwrites at the same path; `cacheControlMaxAge: 0` ensures
+// the CDN does not pin the previous body. Combined with the cache-buster on read, this
+// fixes the silent-overwrite / blob-pin failure mode.
 async function writeRecord(path, record) {
-  const existing = await list({ prefix: path, limit: 1 });
-  if (existing.blobs.length) {
-    await del(existing.blobs[0].url);
-  }
-  return await put(path, JSON.stringify(record), {
+  const blob = await put(path, JSON.stringify(record), {
     access: 'public',
     addRandomSuffix: false,
     contentType: 'application/json',
+    cacheControlMaxAge: 0,
   });
+  return blob;
 }
 
-// GET /api/memory/[key] — read a record (auto-increments retrieval_count)
+// GET /api/memory/[key]?bump=1
+// Reads a record. `bump=1` explicitly increments retrieval_count (was previously fire-and-forget
+// on every read, which created races between concurrent GETs and any PUT/POST).
 export async function GET(req, { params }) {
   if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { key } = await params;
+  const { searchParams } = new URL(req.url);
+  const bump = searchParams.get('bump') === '1';
   const path = `${PREFIX}${key}.json`;
 
   try {
@@ -44,33 +53,38 @@ export async function GET(req, { params }) {
     if (!existing) {
       return NextResponse.json({ error: 'not_found', key }, { status: 404 });
     }
-
     const { data, blob } = existing;
 
-    // Auto-increment retrieval_count (fire-and-forget, don't block response)
-    const updated = {
-      ...data,
-      retrieval_count: (data.retrieval_count || 0) + 1,
-      last_retrieved: new Date().toISOString(),
-    };
-    writeRecord(path, updated).catch(() => {});
+    let returned = data;
+    if (bump) {
+      returned = {
+        ...data,
+        retrieval_count: (data.retrieval_count || 0) + 1,
+        last_retrieved: new Date().toISOString(),
+      };
+      await writeRecord(path, returned);
+    }
 
     return NextResponse.json({
       key,
-      ...updated,
+      ...returned,
       _blob_url: blob.url,
-      _uploaded_at: blob.uploadedAt,
+      _blob_uploaded_at: blob.uploadedAt,
     });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
 
-// PUT /api/memory/[key] — write/upsert a record (full replace)
-// Body: { category, content, updated?, usefulness?, source?, basin? }
+// PUT /api/memory/[key]?verify=1
+// Upserts a record (full replace). With `verify=1`, the handler reads the public URL back
+// after write and confirms the content round-trips before returning ok. Use when the cost
+// of a silent pin would be high (e.g. session-state, doctrine keys).
 export async function PUT(req, { params }) {
   if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { key } = await params;
+  const { searchParams } = new URL(req.url);
+  const verify = searchParams.get('verify') === '1';
   const body = await req.json();
   const path = `${PREFIX}${key}.json`;
 
@@ -86,18 +100,45 @@ export async function PUT(req, { params }) {
       category: body.category || existing_data.category || 'uncategorized',
       content: body.content || '',
       updated: body.updated || new Date().toISOString(),
-      // Scoring fields (preserve existing if not provided in body)
       usefulness: body.usefulness !== undefined ? body.usefulness : (existing_data.usefulness || 0),
       retrieval_count: existing_data.retrieval_count || 0,
       source: body.source || existing_data.source || null,
       last_retrieved: existing_data.last_retrieved || null,
-      // Optional basin coordinates (64 floats when coordized)
       basin: body.basin || existing_data.basin || null,
     };
 
     const blob = await writeRecord(path, record);
 
-    return NextResponse.json({ ok: true, key, url: blob.url, ...record });
+    if (verify) {
+      // Round-trip verify: read the public URL back and confirm content matches.
+      // Small grace period for the put to settle, then cache-busted GET.
+      await new Promise((r) => setTimeout(r, 150));
+      try {
+        const verifyResp = await fetch(`${blob.url}?v=${encodeURIComponent(new Date().toISOString())}`, {
+          cache: 'no-store',
+        });
+        const verifyData = await verifyResp.json();
+        if ((verifyData.content || '') !== record.content) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: 'blob_verification_failed',
+              key,
+              expected_chars: record.content.length,
+              actual_chars: (verifyData.content || '').length,
+            },
+            { status: 500 }
+          );
+        }
+      } catch (verifyErr) {
+        return NextResponse.json(
+          { ok: false, error: 'blob_verification_fetch_failed', key, detail: verifyErr.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    return NextResponse.json({ ok: true, key, url: blob.url, verified: verify, ...record });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
@@ -105,7 +146,6 @@ export async function PUT(req, { params }) {
 
 // POST /api/memory/[key] — partial update (scoring, source, promote)
 // Body: { usefulness_delta?, usefulness_set?, source?, promoted?, basin? }
-// Use this to increment scores without rewriting content.
 export async function POST(req, { params }) {
   if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const { key } = await params;
@@ -119,32 +159,21 @@ export async function POST(req, { params }) {
     }
 
     const { data } = existing;
-
-    // Apply scoring updates
     const updated = { ...data };
 
-    // Increment usefulness by delta (e.g. +1 for positive outcome, -0.5 for neutral)
     if (body.usefulness_delta !== undefined) {
       updated.usefulness = (data.usefulness || 0) + body.usefulness_delta;
     }
-
-    // Or set usefulness to absolute value
     if (body.usefulness_set !== undefined) {
       updated.usefulness = body.usefulness_set;
     }
-
-    // Update source attribution
     if (body.source !== undefined) {
       updated.source = body.source;
     }
-
-    // Mark as promoted to resonance bank
     if (body.promoted !== undefined) {
       updated.promoted = body.promoted;
       updated.promoted_at = new Date().toISOString();
     }
-
-    // Store basin coordinates after coordizing
     if (body.basin !== undefined) {
       updated.basin = body.basin;
     }

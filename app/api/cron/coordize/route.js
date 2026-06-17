@@ -184,6 +184,13 @@ export async function GET(request) {
       });
       const storeBody = await storeResp.json();
       results.stored = !!storeBody.ok;
+      // A verify=1 timeout returns ok:true (write is durable) but verified:false —
+      // surface it so an unconfirmed-but-durable store is distinguishable in telemetry
+      // from a CDN-confirmed one, rather than silently reading as a clean write.
+      if (storeBody.verify_timeout) {
+        results.store_verify_unconfirmed = true;
+        results.store_verify_detail = storeBody.verify_detail;
+      }
       if (!storeBody.ok) results.store_error = storeBody.error;
     } catch (storeErr) {
       results.stored = false;

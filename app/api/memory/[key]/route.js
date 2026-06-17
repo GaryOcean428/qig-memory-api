@@ -114,19 +114,31 @@ export async function PUT(req, { params }) {
       // check is not weakened, only made propagation-tolerant. On budget-exhaustion the
       // response is `verified:false` with `verify_timeout` (write durable, edge unconfirmed),
       // NOT an error — the caller should re-read shortly rather than treat the write as lost.
+      // True wall-clock bound: a single `deadline` checked before BOTH the sleep and the
+      // fetch, so no new fetch starts past the budget. Each fetch is itself capped with an
+      // AbortSignal so one hung edge request cannot blow the wall-clock either — together
+      // these keep total verify time within ~VERIFY_BUDGET_MS (+ at most one in-flight
+      // fetch timeout), which matters inside a serverless function with its own timeout.
       const VERIFY_BUDGET_MS = 6000;
+      const VERIFY_FETCH_TIMEOUT_MS = 2000;
       const VERIFY_DELAYS_MS = [150, 350, 600, 1000, 1500, 2000];
       let verified_ok = false;
       let last_actual_chars = 0;
       let last_fetch_error = null;
-      const verify_start = Date.now();
+      const verify_deadline = Date.now() + VERIFY_BUDGET_MS;
       for (const delay of VERIFY_DELAYS_MS) {
-        if (Date.now() - verify_start > VERIFY_BUDGET_MS) break;
-        await new Promise((r) => setTimeout(r, delay));
+        // Don't start a sleep we can't afford; trim it to whatever budget remains.
+        const before_sleep_remaining = verify_deadline - Date.now();
+        if (before_sleep_remaining <= 0) break;
+        await new Promise((r) => setTimeout(r, Math.min(delay, before_sleep_remaining)));
+        // Re-check after sleeping: don't start a new fetch past the deadline.
+        if (Date.now() >= verify_deadline) break;
         try {
+          // Cap the fetch by both its own timeout and the remaining budget.
+          const remaining = verify_deadline - Date.now();
           const verifyResp = await fetch(
             `${blob.url}?v=${encodeURIComponent(new Date().toISOString())}`,
-            { cache: 'no-store' }
+            { cache: 'no-store', signal: AbortSignal.timeout(Math.min(VERIFY_FETCH_TIMEOUT_MS, remaining)) }
           );
           const verifyData = await verifyResp.json();
           last_actual_chars = (verifyData.content || '').length;
@@ -136,7 +148,7 @@ export async function PUT(req, { params }) {
             break;
           }
         } catch (verifyErr) {
-          // Transient edge/fetch error — keep polling within the budget.
+          // Transient edge/fetch error or per-fetch timeout — keep polling within the budget.
           last_fetch_error = verifyErr.message;
         }
       }

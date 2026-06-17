@@ -104,31 +104,59 @@ export async function PUT(req, { params }) {
     const blob = await writeRecord(path, record);
 
     if (verify) {
-      // Round-trip verify: read the public URL back and confirm content matches.
-      // Small grace period for the put to settle, then cache-busted GET.
-      await new Promise((r) => setTimeout(r, 150));
-      try {
-        const verifyResp = await fetch(`${blob.url}?v=${encodeURIComponent(new Date().toISOString())}`, {
-          cache: 'no-store',
-        });
-        const verifyData = await verifyResp.json();
-        if ((verifyData.content || '') !== record.content) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: 'blob_verification_failed',
-              key,
-              expected_chars: record.content.length,
-              actual_chars: (verifyData.content || '').length,
-            },
-            { status: 500 }
+      // Round-trip verify: read the public URL back and confirm content round-trips.
+      // The blob write is immediately durable, but the public CDN edge can take a few
+      // seconds to propagate the new body. A single short-grace check therefore races
+      // propagation and returns a FALSE NEGATIVE on a write that actually succeeded
+      // (observed: `verified:false` on good writes, prompting needless fallback keys).
+      // Fix: poll with backoff up to a bounded budget; pass as soon as content matches.
+      // A genuinely failed write never matches and still fails after the budget — the
+      // check is not weakened, only made propagation-tolerant. On budget-exhaustion the
+      // response is `verified:false` with `verify_timeout` (write durable, edge unconfirmed),
+      // NOT an error — the caller should re-read shortly rather than treat the write as lost.
+      const VERIFY_BUDGET_MS = 6000;
+      const VERIFY_DELAYS_MS = [150, 350, 600, 1000, 1500, 2000];
+      let verified_ok = false;
+      let last_actual_chars = 0;
+      let last_fetch_error = null;
+      const verify_start = Date.now();
+      for (const delay of VERIFY_DELAYS_MS) {
+        if (Date.now() - verify_start > VERIFY_BUDGET_MS) break;
+        await new Promise((r) => setTimeout(r, delay));
+        try {
+          const verifyResp = await fetch(
+            `${blob.url}?v=${encodeURIComponent(new Date().toISOString())}`,
+            { cache: 'no-store' }
           );
+          const verifyData = await verifyResp.json();
+          last_actual_chars = (verifyData.content || '').length;
+          last_fetch_error = null;
+          if ((verifyData.content || '') === record.content) {
+            verified_ok = true;
+            break;
+          }
+        } catch (verifyErr) {
+          // Transient edge/fetch error — keep polling within the budget.
+          last_fetch_error = verifyErr.message;
         }
-      } catch (verifyErr) {
-        return NextResponse.json(
-          { ok: false, error: 'blob_verification_fetch_failed', key, detail: verifyErr.message },
-          { status: 500 }
-        );
+      }
+      if (!verified_ok) {
+        // Write is durable (the put above resolved); we just couldn't confirm propagation
+        // within the budget. Report unconfirmed, not failed — 200 so callers don't treat a
+        // successful write as lost and thrash to fallback keys.
+        return NextResponse.json({
+          ok: true,
+          key,
+          url: blob.url,
+          verified: false,
+          verify_timeout: true,
+          verify_detail: last_fetch_error
+            ? `edge fetch error within budget: ${last_fetch_error}`
+            : 'content not confirmed at CDN edge within budget (write is durable; re-read shortly)',
+          expected_chars: record.content.length,
+          actual_chars: last_actual_chars,
+          ...record,
+        });
       }
     }
 

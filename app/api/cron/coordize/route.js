@@ -8,6 +8,12 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 const MEMORY_BASE = 'https://qig-memory-api.vercel.app/api/memory';
+// Internal calls to the memory API must carry the API bearer when QIG_API_KEY is set
+// (production). When unset (dev/open mode per lib/auth.js) the header is simply absent and
+// open auth still applies. Without this, every memory fetch below 401s in production —
+// the cron silently can't list, read, or store, and the verify-timeout telemetry never runs.
+const MEMORY_KEY = process.env.QIG_API_KEY || '';
+const MEMORY_AUTH_HEADERS = MEMORY_KEY ? { Authorization: `Bearer ${MEMORY_KEY}` } : {};
 // Canonical session key patterns. Order matters — first match wins.
 const SESSION_KEY_PREFIXES = ['_dev__qig_session_', 'session_'];
 
@@ -32,7 +38,7 @@ export async function GET(request) {
     // We pull the first page at a generous limit; session keys are sorted by upload time.
     const sessionKeys = [];
     for (const prefix of SESSION_KEY_PREFIXES) {
-      const resp = await fetch(`${MEMORY_BASE}?keys_only=true&prefix=${encodeURIComponent(prefix)}&limit=200`);
+      const resp = await fetch(`${MEMORY_BASE}?keys_only=true&prefix=${encodeURIComponent(prefix)}&limit=200`, { headers: MEMORY_AUTH_HEADERS });
       if (!resp.ok) continue;
       const data = await resp.json();
       for (const rec of data.records || []) {
@@ -57,7 +63,7 @@ export async function GET(request) {
     let sessionText = '';
     for (const key of recent) {
       try {
-        const resp = await fetch(`${MEMORY_BASE}/${key}`);
+        const resp = await fetch(`${MEMORY_BASE}/${key}`, { headers: MEMORY_AUTH_HEADERS });
         if (resp.ok) {
           const data = await resp.json();
           sessionText += ' ' + (data.content || '').slice(0, 600);
@@ -83,7 +89,7 @@ export async function GET(request) {
     // Phase 3: Load previous coords for delta computation
     let prevCoords = null;
     try {
-      const prevResp = await fetch(`${MEMORY_BASE}/kernel_basin_vex`);
+      const prevResp = await fetch(`${MEMORY_BASE}/kernel_basin_vex`, { headers: MEMORY_AUTH_HEADERS });
       if (prevResp.ok) {
         const prevData = await prevResp.json();
         const parsed = JSON.parse(prevData.content || '{}');
@@ -97,7 +103,7 @@ export async function GET(request) {
     const coordizeUrl = `${MEMORY_BASE}`.replace('/memory', '/coordize');
     const coordizeResp = await fetch(coordizeUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...MEMORY_AUTH_HEADERS },
       body: JSON.stringify({ texts: [sessionText], store_key: 'kernel_basin_vex_cron' }),
     });
 
@@ -167,7 +173,7 @@ export async function GET(request) {
     try {
       const storeResp = await fetch(`${MEMORY_BASE}/kernel_basin_vex?verify=1`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...MEMORY_AUTH_HEADERS },
         body: JSON.stringify({
           category: 'kernel_state',
           content: JSON.stringify({

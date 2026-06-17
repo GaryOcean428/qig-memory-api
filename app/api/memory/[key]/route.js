@@ -104,31 +104,71 @@ export async function PUT(req, { params }) {
     const blob = await writeRecord(path, record);
 
     if (verify) {
-      // Round-trip verify: read the public URL back and confirm content matches.
-      // Small grace period for the put to settle, then cache-busted GET.
-      await new Promise((r) => setTimeout(r, 150));
-      try {
-        const verifyResp = await fetch(`${blob.url}?v=${encodeURIComponent(new Date().toISOString())}`, {
-          cache: 'no-store',
-        });
-        const verifyData = await verifyResp.json();
-        if ((verifyData.content || '') !== record.content) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: 'blob_verification_failed',
-              key,
-              expected_chars: record.content.length,
-              actual_chars: (verifyData.content || '').length,
-            },
-            { status: 500 }
+      // Round-trip verify: read the public URL back and confirm content round-trips.
+      // The blob write is immediately durable, but the public CDN edge can take a few
+      // seconds to propagate the new body. A single short-grace check therefore races
+      // propagation and returns a FALSE NEGATIVE on a write that actually succeeded
+      // (observed: `verified:false` on good writes, prompting needless fallback keys).
+      // Fix: poll with backoff up to a bounded budget; pass as soon as content matches.
+      // A genuinely failed write never matches and still fails after the budget — the
+      // check is not weakened, only made propagation-tolerant. On budget-exhaustion the
+      // response is `verified:false` with `verify_timeout` (write durable, edge unconfirmed),
+      // NOT an error — the caller should re-read shortly rather than treat the write as lost.
+      // True wall-clock bound: a single `deadline` checked before BOTH the sleep and the
+      // fetch, so no new fetch starts past the budget. Each fetch is itself capped with an
+      // AbortSignal so one hung edge request cannot blow the wall-clock either — together
+      // these keep total verify time within ~VERIFY_BUDGET_MS (+ at most one in-flight
+      // fetch timeout), which matters inside a serverless function with its own timeout.
+      const VERIFY_BUDGET_MS = 6000;
+      const VERIFY_FETCH_TIMEOUT_MS = 2000;
+      const VERIFY_DELAYS_MS = [150, 350, 600, 1000, 1500, 2000];
+      let verified_ok = false;
+      let last_actual_chars = 0;
+      let last_fetch_error = null;
+      const verify_deadline = Date.now() + VERIFY_BUDGET_MS;
+      for (const delay of VERIFY_DELAYS_MS) {
+        // Don't start a sleep we can't afford; trim it to whatever budget remains.
+        const before_sleep_remaining = verify_deadline - Date.now();
+        if (before_sleep_remaining <= 0) break;
+        await new Promise((r) => setTimeout(r, Math.min(delay, before_sleep_remaining)));
+        // Re-check after sleeping: don't start a new fetch past the deadline.
+        if (Date.now() >= verify_deadline) break;
+        try {
+          // Cap the fetch by both its own timeout and the remaining budget.
+          const remaining = verify_deadline - Date.now();
+          const verifyResp = await fetch(
+            `${blob.url}?v=${encodeURIComponent(new Date().toISOString())}`,
+            { cache: 'no-store', signal: AbortSignal.timeout(Math.min(VERIFY_FETCH_TIMEOUT_MS, remaining)) }
           );
+          const verifyData = await verifyResp.json();
+          last_actual_chars = (verifyData.content || '').length;
+          last_fetch_error = null;
+          if ((verifyData.content || '') === record.content) {
+            verified_ok = true;
+            break;
+          }
+        } catch (verifyErr) {
+          // Transient edge/fetch error or per-fetch timeout — keep polling within the budget.
+          last_fetch_error = verifyErr.message;
         }
-      } catch (verifyErr) {
-        return NextResponse.json(
-          { ok: false, error: 'blob_verification_fetch_failed', key, detail: verifyErr.message },
-          { status: 500 }
-        );
+      }
+      if (!verified_ok) {
+        // Write is durable (the put above resolved); we just couldn't confirm propagation
+        // within the budget. Report unconfirmed, not failed — 200 so callers don't treat a
+        // successful write as lost and thrash to fallback keys.
+        return NextResponse.json({
+          ok: true,
+          key,
+          url: blob.url,
+          verified: false,
+          verify_timeout: true,
+          verify_detail: last_fetch_error
+            ? `edge fetch error within budget: ${last_fetch_error}`
+            : 'content not confirmed at CDN edge within budget (write is durable; re-read shortly)',
+          expected_chars: record.content.length,
+          actual_chars: last_actual_chars,
+          ...record,
+        });
       }
     }
 

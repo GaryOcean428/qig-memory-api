@@ -37,7 +37,7 @@ Returns `{ count, page_size, has_more, cursor, records: [...] }`. Loop on `curso
 
 ```
 GET    /api/memory/<key>          # read; ?bump=1 explicitly increments retrieval_count
-PUT    /api/memory/<key>          # full upsert; ?verify=1 round-trip-verifies the blob
+PUT    /api/memory/<key>          # full upsert; ?verify=1 polls the public URL to confirm propagation
 POST   /api/memory/<key>          # partial update (usefulness, source, promoted, basin)
 DELETE /api/memory/<key>          # remove
 ```
@@ -75,7 +75,7 @@ Vercel Blob defaults `cacheControlMaxAge` to **1 year**. With `addRandomSuffix: 
 
 Fix: `cacheControlMaxAge: 0` on every write + cache-buster query (`?v=<uploadedAt>`) on every read.
 
-If you don't trust the write landed, use `PUT /api/memory/<key>?verify=1` — the handler round-trips the public URL after writing and confirms the content matches before returning `ok`.
+If you don't trust the write landed, use `PUT /api/memory/<key>?verify=1` — after writing, the handler polls the public URL (backoff up to a ~6s wall-clock budget) and confirms the content round-trips. On a match it returns `{ok: true, verified: true}`. The blob write itself is always durable the moment the PUT resolves; verification only confirms the **public CDN edge** has caught up, which can lag a few seconds. If the edge hasn't propagated within the budget the response is `{ok: true, verified: false, verify_timeout: true}` (HTTP 200, not an error) — the write landed, only edge-confirmation timed out, so re-read shortly rather than treating it as lost. A *genuinely* failed write never round-trips and is still caught. **Contract note:** verification failure no longer returns HTTP 500 / `ok: false`; detect an unconfirmed write via `verified === false` (optionally `verify_timeout`), not via status code or `ok`.
 
 ### Listing pagination (fixed 2026-06-15)
 

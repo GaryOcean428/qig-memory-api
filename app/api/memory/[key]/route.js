@@ -22,10 +22,14 @@ async function readRecord(path) {
 // `addRandomSuffix: false` overwrites at the same path; `cacheControlMaxAge: 0` ensures
 // the CDN does not pin the previous body. Combined with the cache-buster on read, this
 // fixes the silent-overwrite / blob-pin failure mode.
+// `allowOverwrite: true` is REQUIRED on @vercel/blob >=1: without it, put() to an
+// existing path throws "This blob already exists" and every update to an existing key
+// 500s (PUT/POST content edits and the bump=1 retrieval_count write).
 async function writeRecord(path, record) {
   const blob = await put(path, JSON.stringify(record), {
     access: 'public',
     addRandomSuffix: false,
+    allowOverwrite: true,
     contentType: 'application/json',
     cacheControlMaxAge: 0,
   });

@@ -5,7 +5,14 @@ import { StatusBadge } from '@bsuite/ui';
 import { Plug, Terminal } from 'lucide-react';
 import { CopyButton } from '@/components/copy-button';
 
-const FALLBACK_ORIGIN = 'https://qig-memory-api.vercel.app';
+// Prefer Vercel's build-time production URL so the server-rendered value is
+// always the true production origin (self-correcting across renames / custom
+// domains). `NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL` is a hostname with no
+// protocol; only the hardcoded default is used in local dev where it's unset.
+const PROD_URL = process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL;
+const FALLBACK_ORIGIN = PROD_URL
+  ? `https://${PROD_URL}`
+  : 'https://qig-memory-api.vercel.app';
 
 const PLATFORMS = [
   'Claude Code',

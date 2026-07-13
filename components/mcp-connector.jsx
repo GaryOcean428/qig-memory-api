@@ -48,6 +48,9 @@ export function McpConnector() {
             'qig-memory': {
               type: 'http',
               url: mcpUrl,
+              headers: {
+                Authorization: 'Bearer ${QIG_API_KEY}',
+              },
             },
           },
         },
@@ -57,8 +60,9 @@ export function McpConnector() {
     [mcpUrl],
   );
 
-  // One-liner for CLIs that register remote servers imperatively.
-  const cliCommand = `claude mcp add --transport http qig-memory ${mcpUrl}`;
+  // One-liner for CLIs that register remote servers imperatively. The server
+  // requires the QIG_API_KEY bearer token, passed via the Authorization header.
+  const cliCommand = `claude mcp add --transport http qig-memory ${mcpUrl} --header "Authorization: Bearer $QIG_API_KEY"`;
 
   return (
     <div
@@ -79,7 +83,9 @@ export function McpConnector() {
           <p className="mt-1.5 text-pretty text-sm leading-relaxed text-muted-foreground">
             A Model Context Protocol server exposing the memory store and kernel mesh as tools,
             over the modern Streamable HTTP transport — no local stdio process required. Point any
-            MCP-capable agent, CLI or platform straight at the URL below.
+            MCP-capable agent, CLI or platform straight at the URL below. Authenticate with your{' '}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">QIG_API_KEY</code> as a
+            bearer token.
           </p>
         </div>
       </div>

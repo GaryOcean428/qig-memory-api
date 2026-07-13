@@ -12,6 +12,15 @@
 @import '@bsuite/theme/css';
 
 /*
+ * Tailwind v4 ignores node_modules during content detection, so utility classes
+ * used ONLY inside @bsuite/ui's compiled components (e.g. DialogContent's
+ * `left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2` centering) would never be
+ * generated unless our own source happens to use them. Scanning the design
+ * system's dist output guarantees every class it relies on exists in the bundle.
+ */
+@source '../node_modules/@bsuite/ui/dist';
+
+/*
  * Tailwind v4 reactive bridge. preset-v4.css sets the shadcn --color-* tokens to
  * STATIC light values; the reactivity lives on the un-prefixed vars that vars.css
  * rebinds under `.dark`. Mapping them here makes bg-background / bg-card /

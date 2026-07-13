@@ -1,7 +1,75 @@
 'use client';
 
+import { Fragment } from 'react';
 import { Bot, User, Wrench, Check, Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+
+// Render inline markdown emphasis (**bold**, *italic*, `code`) as React nodes.
+function renderInline(text) {
+  const nodes = [];
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
+  let last = 0;
+  let match;
+  let i = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) nodes.push(text.slice(last, match.index));
+    const token = match[0];
+    if (token.startsWith('**')) {
+      nodes.push(<strong key={i++} className="font-semibold text-foreground">{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith('`')) {
+      nodes.push(
+        <code key={i++} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] text-primary">
+          {token.slice(1, -1)}
+        </code>,
+      );
+    } else {
+      nodes.push(<em key={i++}>{token.slice(1, -1)}</em>);
+    }
+    last = match.index + token.length;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+// Minimal block renderer: paragraphs + unordered/ordered list items.
+function Markdown({ text }) {
+  const lines = text.split('\n');
+  const blocks = [];
+  let list = null;
+
+  const flush = () => {
+    if (list) {
+      blocks.push(
+        <ul key={`ul-${blocks.length}`} className="my-1 ml-4 list-disc space-y-1">
+          {list.map((item, idx) => (
+            <li key={idx}>{renderInline(item)}</li>
+          ))}
+        </ul>,
+      );
+      list = null;
+    }
+  };
+
+  for (const line of lines) {
+    const bullet = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
+    if (bullet) {
+      if (!list) list = [];
+      list.push(bullet[1]);
+    } else if (line.trim() === '') {
+      flush();
+    } else {
+      flush();
+      blocks.push(
+        <p key={`p-${blocks.length}`} className="text-pretty">
+          {renderInline(line)}
+        </p>,
+      );
+    }
+  }
+  flush();
+
+  return <div className="space-y-2">{blocks.map((b, i) => <Fragment key={i}>{b}</Fragment>)}</div>;
+}
 
 // Compact chip describing a single tool call (part.type === "tool-<name>").
 function ToolChip({ part }) {
@@ -65,7 +133,11 @@ export function ChatMessage({ message }) {
                 : 'rounded-tl-sm border border-border bg-card text-card-foreground',
             )}
           >
-            <p className="whitespace-pre-wrap text-pretty">{part.text}</p>
+            {isUser ? (
+              <p className="whitespace-pre-wrap text-pretty">{part.text}</p>
+            ) : (
+              <Markdown text={part.text} />
+            )}
           </div>
         ))}
       </div>

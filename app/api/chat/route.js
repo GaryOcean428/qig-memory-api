@@ -21,7 +21,7 @@ export async function POST(req) {
   const { messages } = await req.json();
 
   const result = streamText({
-    model: 'anthropic/claude-sonnet-4.6',
+    model: 'xai/grok-4.5',
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
     tools: buildAgentTools(),

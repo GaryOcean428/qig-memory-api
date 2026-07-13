@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { D2CDefaultLogo } from '@bsuite/ui';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { AuthButton } from '@/components/auth/auth-button';
 
 const NAV = [
   { label: 'Connect', href: '/#connect' },
@@ -39,6 +40,7 @@ export function SiteHeader() {
             Helper agent
           </Link>
           <ThemeToggle />
+          <AuthButton />
         </div>
       </div>
     </header>

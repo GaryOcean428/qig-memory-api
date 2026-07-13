@@ -1,0 +1,110 @@
+/*
+ * QIG Memory API — global stylesheet.
+ *
+ * BSuite Design System (D2C Neon Electric) wiring, in the exact order
+ * @bsuite/theme documents for a Tailwind v4 consumer:
+ *   1. tailwindcss              — the engine
+ *   2. @bsuite/theme/preset-v4  — the @theme token block (palette → roles → shadcn bridge)
+ *   3. @bsuite/theme/css        — :root + .dark CSS variables + utility classes
+ */
+@import 'tailwindcss';
+@import '@bsuite/theme/preset-v4.css';
+@import '@bsuite/theme/css';
+
+/*
+ * Tailwind v4 reactive bridge. preset-v4.css sets the shadcn --color-* tokens to
+ * STATIC light values; the reactivity lives on the un-prefixed vars that vars.css
+ * rebinds under `.dark`. Mapping them here makes bg-background / bg-card /
+ * text-foreground track the active theme. KEEP THIS BLOCK.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+  }
+}
+
+/*
+ * Elevation — the signature D2C depth cue. Soft neutral shadow in light;
+ * shadow + neon-cyan glow + hairline border in dark.
+ */
+@layer utilities {
+  .elev-card {
+    box-shadow: var(--shadow-elev-2);
+    transition:
+      box-shadow 0.24s ease,
+      border-color 0.24s ease,
+      transform 0.24s ease;
+  }
+  .elev-card-interactive:hover {
+    box-shadow: var(--shadow-elev-3);
+    transform: translateY(-2px);
+  }
+  .dark .elev-card {
+    box-shadow: var(--shadow-elev-2), var(--glow-card);
+    border-color: oklch(0.769 0.132 191.7 / 0.14);
+  }
+  .dark .elev-card-interactive:hover {
+    box-shadow: var(--shadow-elev-3), var(--glow-card-hover);
+    border-color: oklch(0.769 0.132 191.7 / 0.32);
+  }
+
+  .elev-nav {
+    box-shadow: var(--shadow-elev-1);
+  }
+  .dark .elev-nav {
+    box-shadow:
+      0 1px 0 oklch(0.769 0.132 191.7 / 0.14),
+      var(--glow-card);
+    border-color: oklch(0.769 0.132 191.7 / 0.16);
+  }
+
+  .animate-dot-glow {
+    animation: dot-glow 4s ease-in-out infinite;
+  }
+}
+
+@keyframes dot-glow {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}

@@ -1,46 +1,25 @@
-import { put, list, del } from '@vercel/blob';
+import { list, del } from '@vercel/blob';
 import { NextResponse } from 'next/server';
-import { auth } from '../../../../lib/auth.js';
+import { auth, unauthorizedReason } from '../../../../lib/auth.js';
+import {
+  PREFIX,
+  readRecord,
+  writeRecord,
+  assertContentSize,
+  ContentTooLargeError,
+  MAX_CONTENT_BYTES,
+} from '../../../../lib/memory-store.js';
 
-const PREFIX = 'memory/';
-
-// Helper: read existing record with cache busting so writers always see their own writes.
-// Vercel Blob defaults `cacheControlMaxAge` to 1 year — without bust, the CDN can serve
-// stale content for minutes-to-hours after an overwrite. Appending ?v=<uploadedAt> makes
-// the URL CDN-distinct on every new write.
-async function readRecord(path) {
-  const result = await list({ prefix: path, limit: 1 });
-  if (!result.blobs.length) return null;
-  const blob = result.blobs[0];
-  const bust = encodeURIComponent(blob.uploadedAt);
-  const resp = await fetch(`${blob.url}?v=${bust}`, { cache: 'no-store' });
-  const data = await resp.json();
-  return { data, blob };
-}
-
-// Helper: write record to blob store.
-// `addRandomSuffix: false` overwrites at the same path; `cacheControlMaxAge: 0` ensures
-// the CDN does not pin the previous body. Combined with the cache-buster on read, this
-// fixes the silent-overwrite / blob-pin failure mode.
-// `allowOverwrite: true` is REQUIRED on @vercel/blob >=1: without it, put() to an
-// existing path throws "This blob already exists" and every update to an existing key
-// 500s (PUT/POST content edits and the bump=1 retrieval_count write).
-async function writeRecord(path, record) {
-  const blob = await put(path, JSON.stringify(record), {
-    access: 'public',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: 'application/json',
-    cacheControlMaxAge: 0,
-  });
-  return blob;
-}
+// Blob read/write semantics (cache-buster on read, allowOverwrite + max-age 0
+// on write) live in lib/memory-store.js so the REST route, MCP server and agent
+// tools share one implementation and can't drift.
 
 // GET /api/memory/[key]?bump=1
 // Reads a record. `bump=1` explicitly increments retrieval_count (was previously fire-and-forget
 // on every read, which created races between concurrent GETs and any PUT/POST).
 export async function GET(req, { params }) {
-  if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!auth(req))
+    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
   const { key } = await params;
   const { searchParams } = new URL(req.url);
   const bump = searchParams.get('bump') === '1';
@@ -79,12 +58,26 @@ export async function GET(req, { params }) {
 // after write and confirms the content round-trips before returning ok. Use when the cost
 // of a silent pin would be high (e.g. session-state, doctrine keys).
 export async function PUT(req, { params }) {
-  if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!auth(req))
+    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
   const { key } = await params;
   const { searchParams } = new URL(req.url);
   const verify = searchParams.get('verify') === '1';
   const body = await req.json();
   const path = `${PREFIX}${key}.json`;
+
+  // Reject oversized content before it ever reaches Blob.
+  try {
+    assertContentSize(body.content ?? '');
+  } catch (e) {
+    if (e instanceof ContentTooLargeError) {
+      return NextResponse.json(
+        { error: 'content_too_large', max_bytes: MAX_CONTENT_BYTES, got_bytes: e.bytes },
+        { status: 413 },
+      );
+    }
+    throw e;
+  }
 
   try {
     // Preserve existing scoring fields if not provided
@@ -185,7 +178,8 @@ export async function PUT(req, { params }) {
 // POST /api/memory/[key] — partial update (scoring, source, promote)
 // Body: { usefulness_delta?, usefulness_set?, source?, promoted?, basin? }
 export async function POST(req, { params }) {
-  if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!auth(req))
+    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
   const { key } = await params;
   const body = await req.json();
   const path = `${PREFIX}${key}.json`;
@@ -228,7 +222,8 @@ export async function POST(req, { params }) {
 
 // DELETE /api/memory/[key] — remove a record
 export async function DELETE(req, { params }) {
-  if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!auth(req))
+    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
   const { key } = await params;
   const path = `${PREFIX}${key}.json`;
 

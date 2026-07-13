@@ -1,5 +1,6 @@
 import { createMcpHandler } from 'mcp-handler';
 import { toolDefs } from '../../../lib/qig-tools';
+import { auth, unauthorizedReason } from '../../../lib/auth.js';
 
 // Streamable-HTTP MCP server exposing the QIG toolset. Built from the SAME
 // `toolDefs` the helper agent uses, so the MCP surface and the in-app agent can
@@ -39,4 +40,21 @@ const handler = createMcpHandler(
 
 export const maxDuration = 60;
 
-export { handler as GET, handler as POST, handler as DELETE };
+// The MCP tools operate the SAME memory store as the REST API, so the endpoint
+// must enforce the SAME bearer auth — otherwise it is a full bypass of the
+// store's security. Clients send `Authorization: Bearer <QIG_API_KEY>`.
+function withAuth(fn) {
+  return async (req) => {
+    if (!auth(req)) {
+      return new Response(
+        JSON.stringify({ error: 'unauthorized', reason: unauthorizedReason() }),
+        { status: 401, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    return fn(req);
+  };
+}
+
+const authedHandler = withAuth(handler);
+
+export { authedHandler as GET, authedHandler as POST, authedHandler as DELETE };

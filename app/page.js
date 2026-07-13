@@ -5,6 +5,7 @@ import { HomeHero } from '@/components/home-hero';
 import { McpConnector } from '@/components/mcp-connector';
 import { RestEndpoints } from '@/components/rest-endpoints';
 import { KernelSection } from '@/components/kernel-section';
+import { LegalFooter } from '@/components/legal/legal-footer';
 
 export default function Page() {
   return (
@@ -21,12 +22,7 @@ export default function Page() {
           <KernelSection />
         </div>
       </main>
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-2 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:px-6">
-          <p>QIG Memory API — persistent memory + kernel mesh.</p>
-          <p>The original REST API remains fully functional and unchanged.</p>
-        </div>
-      </footer>
+      <LegalFooter />
     </div>
   );
 }

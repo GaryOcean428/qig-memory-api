@@ -1,10 +1,14 @@
 import { list } from '@vercel/blob';
 import { NextResponse } from 'next/server';
-import { auth } from '../../../lib/auth.js';
+import { auth, unauthorizedReason } from '../../../lib/auth.js';
 
 const PREFIX = 'memory/';
 const MAX_PAGE = 1000;
 const DEFAULT_PAGE = 100;
+
+// A full-content listing of 1700+ blobs fetches each body over the network, so
+// give it headroom. Heavy enumeration should still prefer keys_only=true.
+export const maxDuration = 60;
 
 const AUTO_PAGE_CAP = 5000;
 
@@ -35,7 +39,8 @@ async function listAllBlobs(blobPrefix, startCursor) {
 // keys_only returns the complete index in one call. For content, if has_more is
 // true, loop on `cursor` until has_more === false (or pass all=true).
 export async function GET(req) {
-  if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!auth(req))
+    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const category = searchParams.get('category');
@@ -53,8 +58,9 @@ export async function GET(req) {
 
   try {
     // keys_only defaults to walking the whole index; an explicit cursor opts
-    // back into manual paging. Content listing walks all pages only with all=true.
-    const walkAll = fetchAll || (keysOnly && !cursor);
+    // back into manual paging. A category filter is applied AFTER fetching, so
+    // it must also walk every page or matches on page 2+ look empty.
+    const walkAll = fetchAll || ((keysOnly || !!category) && !cursor);
     const result = walkAll
       ? await listAllBlobs(blobPrefix, cursor)
       : await list({ prefix: blobPrefix, limit, cursor });

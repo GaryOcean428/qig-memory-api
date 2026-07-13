@@ -18,8 +18,8 @@ import {
 // Reads a record. `bump=1` explicitly increments retrieval_count (was previously fire-and-forget
 // on every read, which created races between concurrent GETs and any PUT/POST).
 export async function GET(req, { params }) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
   const { key } = await params;
   const { searchParams } = new URL(req.url);
   const bump = searchParams.get('bump') === '1';
@@ -58,8 +58,8 @@ export async function GET(req, { params }) {
 // after write and confirms the content round-trips before returning ok. Use when the cost
 // of a silent pin would be high (e.g. session-state, doctrine keys).
 export async function PUT(req, { params }) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
   const { key } = await params;
   const { searchParams } = new URL(req.url);
   const verify = searchParams.get('verify') === '1';
@@ -178,8 +178,8 @@ export async function PUT(req, { params }) {
 // POST /api/memory/[key] — partial update (scoring, source, promote)
 // Body: { usefulness_delta?, usefulness_set?, source?, promoted?, basin? }
 export async function POST(req, { params }) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
   const { key } = await params;
   const body = await req.json();
   const path = `${PREFIX}${key}.json`;
@@ -222,8 +222,8 @@ export async function POST(req, { params }) {
 
 // DELETE /api/memory/[key] — remove a record
 export async function DELETE(req, { params }) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
   const { key } = await params;
   const path = `${PREFIX}${key}.json`;
 

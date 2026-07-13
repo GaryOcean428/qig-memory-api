@@ -28,8 +28,8 @@ const MODAL_COORDIZE_URL = process.env.MODAL_COORDIZE_URL ||
  *            harvest_meta, pga_dim, elapsed_seconds }
  */
 export async function POST(req) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
 
   const body = await req.json();
   const { texts, store_key, min_contexts = 1, target_tokens = 0, lens_dim = 32 } = body;

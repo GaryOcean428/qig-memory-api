@@ -13,6 +13,7 @@ import {
   ContentTooLargeError,
   MAX_CONTENT_BYTES,
 } from '../../lib/memory-store';
+import { listApiKeys, createApiKey, revokeApiKey } from '../../lib/api-keys';
 
 // Every action authenticates via the OAuth session before touching the store.
 // These run server-side, so they use the shared lib directly — no public REST
@@ -69,4 +70,26 @@ export async function loadKernelMeshAction(agentId) {
   await requireSession();
   const [agents, sync] = await Promise.all([listKernelAgents(), syncKernel(agentId)]);
   return { agent_ids: Object.keys(agents), ...sync };
+}
+
+// --- API key management (session-gated) --------------------------------------
+// The plaintext token is returned to the browser ONLY here, at creation, and is
+// never persisted — the store keeps just a SHA-256 hash. The caller must show
+// it once and let the admin copy it.
+
+export async function listApiKeysAction() {
+  await requireSession();
+  return listApiKeys();
+}
+
+export async function createApiKeyAction(label) {
+  const session = await requireSession();
+  const createdBy = session.user?.username || session.user?.email || session.user?.name || null;
+  return createApiKey({ label, createdBy });
+}
+
+export async function revokeApiKeyAction(id) {
+  await requireSession();
+  const revoked = await revokeApiKey(id);
+  return { revoked, id };
 }

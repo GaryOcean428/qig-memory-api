@@ -55,8 +55,8 @@ export async function GET() {
 
 // POST /api/kernel — register, heartbeat, sync
 export async function POST(req) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
   const body = await req.json();
   const { action } = body;
 

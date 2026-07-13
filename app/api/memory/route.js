@@ -39,8 +39,8 @@ async function listAllBlobs(blobPrefix, startCursor) {
 // keys_only returns the complete index in one call. For content, if has_more is
 // true, loop on `cursor` until has_more === false (or pass all=true).
 export async function GET(req) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const category = searchParams.get('category');

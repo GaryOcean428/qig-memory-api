@@ -11,8 +11,8 @@ export const maxDuration = 60;
 //        → same, plus basin-nearest Fisher-Rao ranking when `basin` is provided
 //          (the JSON body is used so large simplex vectors don't hit URL limits).
 export async function GET(req) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const limit = parseInt(searchParams.get('limit') || '20', 10) || 20;
@@ -32,8 +32,8 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  if (!auth(req))
-    return NextResponse.json({ error: 'unauthorized', reason: unauthorizedReason() }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
 
   try {
     const body = await req.json();

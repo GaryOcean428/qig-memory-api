@@ -30,14 +30,17 @@ export function McpConnector() {
 
   const mcpUrl = `${origin}/api/mcp`;
 
+  // Modern remote-MCP config: `type: "http"` selects the Streamable HTTP
+  // transport (the replacement for stdio) and is understood by Claude Code,
+  // Cursor, VS Code and the hosted connector UIs.
   const mcpJson = useMemo(
     () =>
       JSON.stringify(
         {
           mcpServers: {
             'qig-memory': {
+              type: 'http',
               url: mcpUrl,
-              description: 'QIG Persistent Memory + Kernel Mesh for Pantheon agents',
             },
           },
         },
@@ -46,6 +49,9 @@ export function McpConnector() {
       ),
     [mcpUrl],
   );
+
+  // One-liner for CLIs that register remote servers imperatively.
+  const cliCommand = `claude mcp add --transport http qig-memory ${mcpUrl}`;
 
   return (
     <div
@@ -64,8 +70,9 @@ export function McpConnector() {
             <StatusBadge tone="success">Live</StatusBadge>
           </div>
           <p className="mt-1.5 text-pretty text-sm leading-relaxed text-muted-foreground">
-            A Model Context Protocol server exposing the memory store and kernel mesh as tools.
-            Drop the URL into any MCP-capable client.
+            A Model Context Protocol server exposing the memory store and kernel mesh as tools,
+            over the modern Streamable HTTP transport — no local stdio process required. Point any
+            MCP-capable agent, CLI or platform straight at the URL below.
           </p>
         </div>
       </div>
@@ -90,6 +97,20 @@ export function McpConnector() {
             {mcpUrl}
           </code>
           <CopyButton value={mcpUrl} label="Copy URL" className="shrink-0 gap-2" />
+        </div>
+      </div>
+
+      {/* CLI one-liner */}
+      <div className="mt-8">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Terminal className="h-4 w-4 text-muted-foreground" />
+          <span>Add it to a CLI in one command</span>
+        </div>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-xl border border-border bg-muted/60 px-4 py-3 font-mono text-sm text-foreground">
+            {cliCommand}
+          </code>
+          <CopyButton value={cliCommand} label="Copy command" className="shrink-0 gap-2" />
         </div>
       </div>
 

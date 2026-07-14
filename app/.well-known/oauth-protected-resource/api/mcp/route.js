@@ -9,7 +9,7 @@ export async function GET(request) {
     {
       resource: `${origin}/api/mcp`,
       authorization_servers: [origin],
-      scopes_supported: ['mcp:tools'],
+      scopes_supported: ['memory:read', 'memory:write', 'memory:admin'],
       bearer_methods_supported: ['header'],
       resource_documentation: `${origin}/#connect`,
     },

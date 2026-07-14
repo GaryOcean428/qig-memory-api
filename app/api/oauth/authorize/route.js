@@ -10,7 +10,7 @@ function oauthError(redirectUri, error, state, description) {
   target.searchParams.set('error', error);
   if (description) target.searchParams.set('error_description', description);
   if (state) target.searchParams.set('state', state);
-  return NextResponse.redirect(target);
+  return NextResponse.redirect(target, { status: 303 });
 }
 
 async function validate(params) {
@@ -85,5 +85,5 @@ export async function POST(request) {
   const target = new URL(result.redirectUri);
   target.searchParams.set('code', code);
   if (result.state) target.searchParams.set('state', result.state);
-  return NextResponse.redirect(target);
+  return NextResponse.redirect(target, { status: 303 });
 }

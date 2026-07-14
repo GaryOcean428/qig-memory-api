@@ -24,6 +24,12 @@ export default async function OAuthConsentPage({ searchParams }) {
   }
 
   const fields = ['client_id', 'redirect_uri', 'response_type', 'code_challenge', 'code_challenge_method', 'state', 'scope'];
+  const requestedScopes = String(params.scope || 'memory:read').split(/\s+/).filter(Boolean);
+  const scopeDescriptions = {
+    'memory:read': 'Read, list, and search memory records and inspect the kernel mesh.',
+    'memory:write': 'Create and update memory records and scoring metadata.',
+    'memory:admin': 'Delete records and perform cross-namespace administrative operations.',
+  };
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
@@ -46,16 +52,23 @@ export default async function OAuthConsentPage({ searchParams }) {
         <div className="mt-6 rounded-xl border border-border bg-muted/40 p-4">
           <div className="flex items-start gap-3">
             <Wrench className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Use MCP tools</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Read and write memory records and inspect the kernel mesh through the MCP endpoint.
-              </p>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">Requested permissions</p>
+              <ul className="mt-3 flex flex-col gap-3">
+                {requestedScopes.map((scope) => (
+                  <li key={scope} className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
+                    <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+                    <span>
+                      <code className="font-mono text-foreground">{scope}</code>
+                      <span className="block">{scopeDescriptions[scope] || 'Access the requested QIG Memory capability.'}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-2 border-t border-border pt-4 text-xs text-muted-foreground">
-            <Check className="size-4 text-primary" aria-hidden="true" />
-            Scope: <code className="font-mono text-foreground">mcp:tools</code>
+          <div className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
+            Client trust: <span className="font-medium text-foreground">{client.trusted ? 'Full operator' : 'Read only'}</span>
           </div>
         </div>
 

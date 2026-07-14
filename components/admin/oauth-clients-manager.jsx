@@ -2,18 +2,18 @@
 
 import { useState, useTransition } from 'react';
 import { Button, EmptyState, LoadingSpinner, StatusBadge } from '@bsuite/ui';
-import { Cable, ShieldCheck, ShieldX } from 'lucide-react';
-import { setOAuthClientTrustAction } from '@/app/admin/actions';
+import { Ban, Cable, ShieldCheck, ShieldX } from 'lucide-react';
+import { setOAuthClientAccessAction } from '@/app/admin/actions';
 
 export function OAuthClientsManager({ initialClients }) {
   const [clients, setClients] = useState(initialClients);
   const [pendingId, setPendingId] = useState(null);
   const [isPending, startTransition] = useTransition();
 
-  function toggle(client) {
+  function updateAccess(client, mode) {
     setPendingId(client.client_id);
     startTransition(async () => {
-      const updated = await setOAuthClientTrustAction(client.client_id, !client.trusted);
+      const updated = await setOAuthClientAccessAction(client.client_id, mode);
       if (updated) setClients((items) => items.map((item) => item.client_id === updated.client_id ? updated : item));
       setPendingId(null);
     });
@@ -38,15 +38,25 @@ export function OAuthClientsManager({ initialClients }) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium text-foreground">{client.client_name}</span>
-                    <StatusBadge tone={client.trusted ? 'success' : 'neutral'}>{client.trusted ? 'Full operator' : 'Read only'}</StatusBadge>
+                    <StatusBadge tone={client.revoked_at ? 'error' : client.trusted ? 'success' : 'neutral'}>
+                      {client.revoked_at ? 'Revoked' : client.trusted ? 'Full operator' : 'Read only'}
+                    </StatusBadge>
                   </div>
                   <code className="mt-1 block truncate font-mono text-xs text-muted-foreground">{client.client_id}</code>
-                  <p className="mt-1 text-xs text-muted-foreground">Scopes: {(client.approved_scopes || ['memory:read']).join(', ')}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Scopes: {(client.approved_scopes || ['memory:read']).join(', ') || 'None'}</p>
                 </div>
-                <Button type="button" variant={client.trusted ? 'secondary' : 'default'} className="shrink-0 gap-2" disabled={isPending && pendingId === client.client_id} onClick={() => toggle(client)}>
-                  {isPending && pendingId === client.client_id ? <LoadingSpinner size="sm" /> : client.trusted ? <ShieldX className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-                  <span>{client.trusted ? 'Revoke operator' : 'Approve operator'}</span>
-                </Button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button type="button" variant={client.trusted ? 'secondary' : 'default'} className="gap-2" disabled={isPending && pendingId === client.client_id} onClick={() => updateAccess(client, client.trusted ? 'read' : 'operator')}>
+                    {isPending && pendingId === client.client_id ? <LoadingSpinner size="sm" /> : client.trusted ? <ShieldX className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                    <span>{client.trusted ? 'Downgrade to read' : 'Approve operator'}</span>
+                  </Button>
+                  {!client.revoked_at ? (
+                    <Button type="button" variant="secondary" className="gap-2" disabled={isPending && pendingId === client.client_id} onClick={() => updateAccess(client, 'revoked')}>
+                      <Ban className="h-4 w-4" />
+                      <span>Revoke client</span>
+                    </Button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>

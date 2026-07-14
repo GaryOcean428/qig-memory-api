@@ -33,10 +33,9 @@ export async function POST(request) {
     const codeVerifier = String(form.get('code_verifier') || '');
     const authorization = await consumeAuthorizationCode({ code, clientId, redirectUri, codeVerifier });
     if (!authorization) return error('invalid_grant', 'Authorization code is invalid, expired, or PKCE verification failed.');
-    return NextResponse.json(
-      await issueTokens({ clientId, userId: authorization.user_id, scope: authorization.scope }),
-      { headers },
-    );
+    const tokens = await issueTokens({ clientId, userId: authorization.user_id, scope: authorization.scope });
+    if (!tokens) return error('invalid_grant', 'Client approval was revoked or no requested scopes remain approved.');
+    return NextResponse.json(tokens, { headers });
   }
 
   if (grantType === 'refresh_token') {

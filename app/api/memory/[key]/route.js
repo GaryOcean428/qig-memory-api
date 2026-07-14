@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import { authorize, unauthorizedReason } from '../../../../lib/auth.js';
+import { authorizeDetailed, unauthorizedReason } from '../../../../lib/auth.js';
 import {
   getMemory,
+  keyToPath,
+  writeRecord,
   putMemory,
   postMemory,
   deleteMemory,
@@ -10,23 +12,42 @@ import {
 } from '../../../../lib/memory-store.js';
 
 async function requireScope(req, scope) {
-  return authorize(req, scope, { allowOAuth: true });
+  return authorizeDetailed(req, scope, { allowOAuth: true });
 }
 
-function denied(reason, status = 401) {
-  return NextResponse.json({ error: 'unauthorized', reason }, { status });
+async function denied(result) {
+  const reason = result.error === 'insufficient_scope' ? 'insufficient_scope' : await unauthorizedReason();
+  const challenge = result.error === 'insufficient_scope'
+    ? `Bearer error="insufficient_scope", scope="${result.requiredScope}"`
+    : 'Bearer';
+  return NextResponse.json(
+    { error: result.error, reason, required_scope: result.requiredScope || undefined },
+    { status: result.status, headers: { 'www-authenticate': challenge } },
+  );
 }
 
 export async function GET(req, { params }) {
-  if (!(await requireScope(req, 'memory:read'))) return denied(await unauthorizedReason());
+  const authorization = await requireScope(req, 'memory:read');
+  if (authorization.error) return denied(authorization);
   const { key } = await params;
+  const bump = new URL(req.url).searchParams.get('bump') === '1';
   const record = await getMemory(key);
   if (!record) return NextResponse.json({ error: 'not_found', key }, { status: 404 });
-  return NextResponse.json(record);
+  if (!bump) return NextResponse.json(record);
+
+  const updated = {
+    ...record,
+    retrieval_count: (record.retrieval_count || 0) + 1,
+    last_retrieved: new Date().toISOString(),
+  };
+  const { key: _key, ...stored } = updated;
+  await writeRecord(keyToPath(key), stored);
+  return NextResponse.json(updated);
 }
 
 export async function PUT(req, { params }) {
-  if (!(await requireScope(req, 'memory:write'))) return denied(await unauthorizedReason());
+  const authorization = await requireScope(req, 'memory:write');
+  if (authorization.error) return denied(authorization);
   const { key } = await params;
   try {
     const body = await req.json();
@@ -45,7 +66,8 @@ export async function PUT(req, { params }) {
 }
 
 export async function POST(req, { params }) {
-  if (!(await requireScope(req, 'memory:write'))) return denied(await unauthorizedReason());
+  const authorization = await requireScope(req, 'memory:write');
+  if (authorization.error) return denied(authorization);
   const { key } = await params;
   const record = await postMemory(key, await req.json());
   if (!record) return NextResponse.json({ error: 'not_found', key }, { status: 404 });
@@ -53,7 +75,8 @@ export async function POST(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  if (!(await requireScope(req, 'memory:admin'))) return denied(await unauthorizedReason());
+  const authorization = await requireScope(req, 'memory:admin');
+  if (authorization.error) return denied(authorization);
   const { key } = await params;
   if (!(await deleteMemory(key))) return NextResponse.json({ error: 'not_found', key }, { status: 404 });
   return NextResponse.json({ ok: true, deleted: key });

@@ -32,12 +32,17 @@ const MD_COMPONENTS = {
   blockquote: ({ children }) => (
     <blockquote className="my-1 border-l-2 border-primary/40 pl-3 text-muted-foreground">{children}</blockquote>
   ),
-  code: ({ inline, className, children }) =>
-    inline ? (
+  code: ({ node, className, children, ...rest }) => {
+    const isInline = !rest.hasOwnProperty('data-sourcepos') && !(node?.position && className);
+    // In react-markdown v10 the simplest inline check: if there is no className
+    // (no language-xxx) and the parent is not <pre>, it's inline.
+    const hasLang = /language-(\w+)/.test(className || '');
+    return !hasLang ? (
       <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] text-primary">{children}</code>
     ) : (
       <code className={cn('font-mono text-xs', className)}>{children}</code>
-    ),
+    );
+  },
   pre: ({ children }) => (
     <pre className="my-1 overflow-x-auto rounded-lg border border-border bg-muted/50 p-3">{children}</pre>
   ),

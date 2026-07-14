@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { COOKIES, isOAuthConfigured, decodeSession } from '../../../../lib/vercel-oauth';
+import { COOKIES, isOAuthConfigured, isDevLoginAllowed, decodeSession } from '../../../../lib/vercel-oauth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,6 +10,7 @@ export async function GET(request) {
 
   return NextResponse.json({
     configured: isOAuthConfigured(),
+    devLogin: isDevLoginAllowed(),
     authenticated: Boolean(session?.user),
     user: session?.user ?? null,
   });

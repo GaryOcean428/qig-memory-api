@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import useSWR from 'swr';
 import { Button, LoadingSpinner } from '@bsuite/ui';
-import { LogOut, ChevronDown } from 'lucide-react';
+import { LogOut, ChevronDown, FlaskConical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const fetcher = (url) => fetch(url).then((r) => r.json());
@@ -68,13 +68,25 @@ export function AuthButton() {
   if (!data?.authenticated) {
     const returnTo = encodeURIComponent(pathname || '/');
     return (
-      <a
-        href={`/api/auth/vercel/login?returnTo=${returnTo}`}
-        className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <VercelMark className="h-3.5 w-3.5" />
-        Sign in with Vercel
-      </a>
+      <div className="flex items-center gap-2">
+        <a
+          href={`/api/auth/vercel/login?returnTo=${returnTo}`}
+          className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <VercelMark className="h-3.5 w-3.5" />
+          Sign in with Vercel
+        </a>
+        {data?.devLogin && (
+          <a
+            href={`/api/auth/dev-login?returnTo=${returnTo}`}
+            title="Dev-only: mint a local session without OAuth. Disabled on every deployment."
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-dashed border-warning/60 bg-warning/10 px-3 text-sm font-medium text-foreground transition-colors hover:bg-warning/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            Dev sign-in
+          </a>
+        )}
+      </div>
     );
   }
 

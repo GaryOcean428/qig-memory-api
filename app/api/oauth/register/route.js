@@ -1,25 +1,13 @@
 import { NextResponse } from 'next/server';
-import { isSafeRedirectUri, registerClient } from '../../../../lib/mcp-oauth-store';
+import { claimClientRegistration, isSafeRedirectUri, registerClient } from '../../../../lib/mcp-oauth-store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const registrations = new Map();
-const WINDOW_MS = 60 * 60 * 1000;
-const MAX_REGISTRATIONS = 20;
-
-function registrationAllowed(request) {
+export async function POST(request) {
   const forwarded = request.headers.get('x-forwarded-for');
   const address = forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
-  const now = Date.now();
-  const recent = (registrations.get(address) || []).filter((time) => now - time < WINDOW_MS);
-  if (recent.length >= MAX_REGISTRATIONS) return false;
-  registrations.set(address, [...recent, now]);
-  return true;
-}
-
-export async function POST(request) {
-  if (!registrationAllowed(request)) {
+  if (!(await claimClientRegistration(address))) {
     return NextResponse.json({ error: 'rate_limit_exceeded' }, { status: 429, headers: { 'retry-after': '3600' } });
   }
   const contentLength = Number(request.headers.get('content-length') || 0);

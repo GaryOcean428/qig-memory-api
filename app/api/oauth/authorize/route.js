@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '../../../../lib/session';
-import { createAuthorizationCode, getClient } from '../../../../lib/mcp-oauth-store';
+import {
+  consumeConsentToken,
+  createAuthorizationCode,
+  createConsentToken,
+  getClient,
+} from '../../../../lib/mcp-oauth-store';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,6 +31,9 @@ async function validate(params) {
   if (!client || !redirectUri || !client.redirect_uris.includes(redirectUri)) {
     return { response: NextResponse.json({ error: 'invalid_request', error_description: 'Unknown client or redirect URI.' }, { status: 400 }) };
   }
+  if (client.revoked_at) {
+    return { response: oauthError(redirectUri, 'unauthorized_client', state, 'This OAuth client has been revoked.') };
+  }
   if (responseType !== 'code' || !codeChallenge || challengeMethod !== 'S256') {
     return { response: oauthError(redirectUri, 'invalid_request', state, 'Authorization code + PKCE S256 is required.') };
   }
@@ -48,15 +56,23 @@ export async function GET(request) {
     return NextResponse.redirect(new URL(`/api/auth/vercel/login?returnTo=${encodeURIComponent(returnTo)}`, url.origin));
   }
 
-  // Never auto-approve a dynamically registered client. Send the authenticated
-  // user to an explicit consent screen that identifies the client and scope.
-  return NextResponse.redirect(new URL(`/oauth/consent?${url.searchParams.toString()}`, url.origin));
+  const userId = session.user.id || session.user.email || session.user.username;
+  const consentToken = createConsentToken({
+    clientId: result.clientId,
+    redirectUri: result.redirectUri,
+    codeChallenge: result.codeChallenge,
+    userId,
+    scope: result.scope,
+  });
+  const consentParams = new URLSearchParams(url.searchParams);
+  consentParams.set('consent_token', consentToken);
+  return NextResponse.redirect(new URL(`/oauth/consent?${consentParams.toString()}`, url.origin));
 }
 
 export async function POST(request) {
   const url = new URL(request.url);
   const origin = request.headers.get('origin');
-  if (origin && origin !== url.origin) {
+  if (origin !== url.origin) {
     return NextResponse.json({ error: 'invalid_request', error_description: 'Cross-origin consent is not allowed.' }, { status: 403 });
   }
 
@@ -71,6 +87,17 @@ export async function POST(request) {
 
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'login_required' }, { status: 401 });
+  const userId = session.user.id || session.user.email || session.user.username;
+  const consentValid = await consumeConsentToken(form.get('consent_token'), {
+    clientId: result.clientId,
+    redirectUri: result.redirectUri,
+    codeChallenge: result.codeChallenge,
+    userId,
+    scope: result.scope,
+  });
+  if (!consentValid) {
+    return NextResponse.json({ error: 'invalid_request', error_description: 'Consent token is missing, expired, or already used.' }, { status: 403 });
+  }
   if (form.get('decision') !== 'allow') {
     return oauthError(result.redirectUri, 'access_denied', result.state, 'The user denied access.');
   }
@@ -79,7 +106,7 @@ export async function POST(request) {
     clientId: result.clientId,
     redirectUri: result.redirectUri,
     codeChallenge: result.codeChallenge,
-    userId: session.user.id || session.user.email || session.user.username,
+    userId,
     scope: result.scope,
   });
   const target = new URL(result.redirectUri);

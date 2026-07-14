@@ -23,7 +23,7 @@ export default async function OAuthConsentPage({ searchParams }) {
     );
   }
 
-  const fields = ['client_id', 'redirect_uri', 'response_type', 'code_challenge', 'code_challenge_method', 'state', 'scope'];
+  const fields = ['client_id', 'redirect_uri', 'response_type', 'code_challenge', 'code_challenge_method', 'state', 'scope', 'consent_token'];
   const requestedScopes = String(params.scope || 'memory:read').split(/\s+/).filter(Boolean);
   const scopeDescriptions = {
     'memory:read': 'Read, list, and search memory records and inspect the kernel mesh.',

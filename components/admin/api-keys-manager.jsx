@@ -55,7 +55,6 @@ export function ApiKeysManager({ initialKeys }) {
         setNewToken(res.token);
         setKeys((prev) => [res.key, ...prev]);
         if (rememberOnDevice) rememberBrowserApiKey(res.token, res.key);
-        else forgetBrowserApiKey();
         setLabel('');
       } else {
         setError('Could not create key. Please try again.');

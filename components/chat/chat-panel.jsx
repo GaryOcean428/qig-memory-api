@@ -95,7 +95,7 @@ export function ChatPanel({ conversationId, initialMessages = [], onMessagesChan
         </div>
       ) : (
         <ScrollArea className="flex-1" viewportRef={viewportRef}>
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 lg:max-w-5xl xl:max-w-7xl xl:px-8">
             {messages.map((m) => (
               <ChatMessage key={m.id} message={m} />
             ))}
@@ -110,7 +110,7 @@ export function ChatPanel({ conversationId, initialMessages = [], onMessagesChan
 
       {/* Composer */}
       <div className="border-t border-border bg-background">
-        <div className="mx-auto w-full max-w-3xl">
+        <div className="mx-auto w-full max-w-3xl lg:max-w-5xl xl:max-w-7xl xl:px-4">
           <ChatComposer onSubmit={submit} busy={busy} />
         </div>
       </div>

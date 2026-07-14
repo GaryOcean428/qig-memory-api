@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import {
   Button,
   Dialog,
@@ -25,23 +25,38 @@ const FALLBACK_ORIGIN = PROD_URL ? `https://${PROD_URL}` : 'https://qig-memory-a
 const PLATFORMS = ['Claude Code', 'Hermes Desktop', 'Grok Build', 'Cursor', 'Codex CLI', 'grok.com Connectors', 'claude.ai'];
 
 function SecureCopyButton({ value, label, hasCredential, onMissing, variant = 'primary', size = 'md' }) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState('idle');
+  const errorId = useId();
 
   async function copy() {
     if (!hasCredential) {
       onMissing();
       return;
     }
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+      setCopyState('error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyState('copied');
+      window.setTimeout(() => setCopyState('idle'), 1800);
+    } catch {
+      setCopyState('error');
+    }
   }
 
+  const copied = copyState === 'copied';
+  const failed = copyState === 'error';
+
   return (
-    <Button type="button" variant={variant} size={size} onClick={copy} className="shrink-0 gap-2">
-      {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
-      {copied ? 'Copied' : label}
-    </Button>
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <Button type="button" variant={variant} size={size} onClick={copy} className="gap-2" aria-describedby={failed ? errorId : undefined}>
+        {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+        {copied ? 'Copied' : failed ? 'Copy failed' : label}
+      </Button>
+      {failed ? <span id={errorId} role="alert" className="text-xs text-destructive">Clipboard unavailable. Select and copy manually.</span> : null}
+    </div>
   );
 }
 
@@ -226,7 +241,7 @@ export function McpConnector() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><KeyRound className="h-5 w-5 text-primary" /> Generate an API key first</DialogTitle>
             <DialogDescription>
-              API-key commands must contain a valid bearer token. Sign in, generate a key, then return here; the latest token will be remembered in this browser automatically.
+              API-key commands must contain a valid bearer token. Sign in, generate a key, and choose “Remember this key on this device” before returning here.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -5,11 +5,13 @@ import { MemoryBrowser } from '@/components/admin/memory-browser';
 import { KernelMeshViewer } from '@/components/admin/kernel-mesh-viewer';
 import { ApiKeysManager } from '@/components/admin/api-keys-manager';
 import { OAuthClientsManager } from '@/components/admin/oauth-clients-manager';
+import { DailyReviewerManager } from '@/components/admin/daily-reviewer-manager';
 import { AuthButton } from '@/components/auth/auth-button';
 import { getSession } from '@/lib/session';
 import { listMemory, listKernelAgents, syncKernel } from '@/lib/memory-store';
 import { listApiKeys } from '@/lib/api-keys';
 import { listOAuthClients } from '@/lib/mcp-oauth-store';
+import { getReviewerConfig, getLatestReport } from '@/lib/reviewer-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,11 +44,13 @@ export default async function AdminPage() {
   }
 
   // Authenticated: load initial data directly through the shared lib (server-side).
-  const [index, agentMap, apiKeys, oauthClients] = await Promise.all([
+  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport] = await Promise.all([
     listMemory({ keysOnly: true }),
     listKernelAgents(),
     listApiKeys(),
     listOAuthClients(),
+    getReviewerConfig(),
+    getLatestReport(),
   ]);
   const keys = index.records
     .slice()
@@ -63,6 +67,7 @@ export default async function AdminPage() {
           <KernelMeshViewer initialAgentIds={agentIds} initialMesh={initialMesh} />
           <ApiKeysManager initialKeys={apiKeys} />
           <OAuthClientsManager initialClients={oauthClients} />
+          <DailyReviewerManager initialConfig={reviewerConfig} initialReport={reviewerReport} />
         </Suspense>
       </main>
       <LegalFooter />

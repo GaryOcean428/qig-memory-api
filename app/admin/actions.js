@@ -15,6 +15,8 @@ import {
 } from '../../lib/memory-store';
 import { listApiKeys, createApiKey, revokeApiKey } from '../../lib/api-keys';
 import { listOAuthClients, setClientAccess } from '../../lib/mcp-oauth-store';
+import { getReviewerConfig, saveReviewerConfig, getLatestReport } from '../../lib/reviewer-config';
+import { runDailyReview } from '../../lib/daily-reviewer';
 
 // Every action authenticates via the OAuth session before touching the store.
 // These run server-side, so they use the shared lib directly — no public REST
@@ -104,4 +106,37 @@ export async function setOAuthClientAccessAction(clientId, mode) {
   const session = await requireSession();
   const approvedBy = session.user?.username || session.user?.email || session.user?.name || null;
   return setClientAccess(clientId, mode, approvedBy);
+}
+
+// --- Daily reviewer (session-gated) ------------------------------------------
+// Config (nominated repos + science topics) and the latest report are loaded for
+// the admin panel; saves are validated in saveReviewerConfig. A manual run reuses
+// the exact same orchestrator the cron uses, so behavior can't drift between them.
+
+export async function loadReviewerAction() {
+  await requireSession();
+  const [config, latestReport] = await Promise.all([getReviewerConfig(), getLatestReport()]);
+  return { config, latestReport };
+}
+
+export async function saveReviewerConfigAction(patch) {
+  await requireSession();
+  try {
+    const config = await saveReviewerConfig(patch);
+    return { ok: true, config };
+  } catch (err) {
+    console.log('[v0] saveReviewerConfigAction error:', err?.message);
+    return { ok: false, error: 'invalid_config' };
+  }
+}
+
+export async function runDailyReviewNowAction() {
+  await requireSession();
+  try {
+    const result = await runDailyReview({ trigger: 'manual' });
+    return result;
+  } catch (err) {
+    console.log('[v0] runDailyReviewNowAction error:', err?.message);
+    return { ok: false, error: err?.message || 'run_failed' };
+  }
 }

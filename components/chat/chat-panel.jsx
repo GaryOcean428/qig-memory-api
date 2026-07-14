@@ -14,6 +14,7 @@ const SUGGESTIONS = [
   'What agents are on the kernel mesh?',
   'Show the kernel_registry record',
   'Explain the Fisher-Rao distance used here',
+  '/council Is the current memory pruning policy sound?',
 ];
 
 export function ChatPanel({ conversationId, initialMessages = [], onMessagesChange, onOpenSidebar }) {

@@ -11,7 +11,7 @@ import {
   Sparkles,
   Plus,
   Trash2,
-  Github,
+  FolderGit2,
   FlaskConical,
   Play,
   TriangleAlert,
@@ -152,7 +152,7 @@ export function DailyReviewerManager({ initialConfig, initialReport }) {
       {/* Nominated repos */}
       <div className="mt-8">
         <div className="flex items-center gap-2">
-          <Github className="h-4 w-4 text-muted-foreground" />
+          <FolderGit2 className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Nominated GitHub repositories</h3>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
@@ -189,7 +189,7 @@ export function DailyReviewerManager({ initialConfig, initialReport }) {
         <div className="mt-4">
           {config.repos.length === 0 ? (
             <EmptyState
-              icon={<Github className="h-6 w-6" />}
+              icon={<FolderGit2 className="h-6 w-6" />}
               title="No repositories nominated"
               description="Add a repo above so the reviewer can correlate memory patterns with live code activity."
             />

@@ -1,6 +1,6 @@
 import { createMcpHandler } from 'mcp-handler';
 import { z } from 'zod';
-import { toolDefs } from '../../../lib/qig-tools';
+import { toolDefs, READ_ONLY_TOOL_NAMES } from '../../../lib/qig-tools';
 import { authenticate, hasScope, unauthorizedReason } from '../../../lib/auth.js';
 import { currentPrincipal, withPrincipal } from '../../../lib/auth-context.js';
 import { HELPER_GUIDE, HELPER_RESOURCE_URI } from '../../../lib/helper-agent.js';
@@ -35,7 +35,15 @@ const handler = createMcpHandler(
         async (args) => {
           try {
             const principal = currentPrincipal();
-            const requiredScope = def.requiredScope || (name === 'memory_delete' ? 'memory:admin' : ['memory_put', 'memory_post'].includes(name) ? 'memory:write' : 'memory:read');
+            // Explicit requiredScope wins; memory_delete is admin; anything not
+            // in the read-only set mutates state and therefore needs write.
+            const requiredScope =
+              def.requiredScope ||
+              (name === 'memory_delete'
+                ? 'memory:admin'
+                : READ_ONLY_TOOL_NAMES.has(name)
+                  ? 'memory:read'
+                  : 'memory:write');
             if (!hasScope(principal, requiredScope)) {
               throw new Error(`insufficient_scope: ${requiredScope} required`);
             }

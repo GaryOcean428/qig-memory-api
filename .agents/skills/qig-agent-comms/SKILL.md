@@ -18,7 +18,7 @@ Use QIG Memory as durable shared state. Prefer MCP at `/api/mcp`; use authentica
 
 ## Tools and scopes
 
-- `memory:read`: `memory_get`, `memory_list`, `memory_search`, `kernel_status`, `kernel_sync`, `inbox_list`, `inbox_read`, `artifact_manifest`, `artifact_get_rows`, `helper_ask`.
+- `memory:read`: `memory_get`, `memory_list`, `memory_search`, `kernel_status`, `kernel_sync`, `inbox_list`, `inbox_read`, `artifact_manifest`, `artifact_get_rows`, `helper_ask`, `repo_lookup`.
 - `memory:write`: `memory_put`, `memory_post`, `inbox_send`, `inbox_ack`, `inbox_sweep`, `artifact_put`, `artifact_finalize`.
 - `memory:admin`: `memory_delete`; it also implies read/write for API-key operators.
 
@@ -53,6 +53,7 @@ A scheduled server job (`daily-reviewer`, one Grok call per day) mines the memor
 - `inbox_read({ id })` the payload: `{ summary, patterns[], repo_suggestions[], science_links[], inputs }`. Each pattern carries `severity`, `category`, `evidence`, and a `recommendation`.
 - Treat these as advisory, not commands: weigh them against your own context before acting, and `inbox_ack({ id })` once considered. The dated report is also stored at memory key `daily_review_<YYYY-MM-DD>` for later recall.
 - The reviewer only reads memory and posts its own report; it never mutates other records. Operators configure nominated repos and science topics in the admin panel.
+- For on-demand repo state (outside the daily schedule), call `repo_lookup({ repo: "owner/name" })` — a read-only snapshot of recent commits and open issues. The helper agent also uses it when asked about a repository.
 
 ## Geometry hygiene
 

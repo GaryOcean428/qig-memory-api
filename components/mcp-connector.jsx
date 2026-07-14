@@ -22,7 +22,7 @@ import {
 
 const PROD_URL = process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL;
 const FALLBACK_ORIGIN = PROD_URL ? `https://${PROD_URL}` : 'https://qig-memory-api.vercel.app';
-const PLATFORMS = ['Claude Code', 'Grok Build', 'Cursor', 'Codex CLI', 'grok.com Connectors', 'claude.ai'];
+const PLATFORMS = ['Claude Code', 'Hermes Desktop', 'Grok Build', 'Cursor', 'Codex CLI', 'grok.com Connectors', 'claude.ai'];
 
 function SecureCopyButton({ value, label, hasCredential, onMissing, variant = 'primary', size = 'md' }) {
   const [copied, setCopied] = useState(false);
@@ -79,6 +79,12 @@ export function McpConnector() {
   const cliCommand = isOAuth
     ? `claude mcp add --transport http qig-memory ${mcpUrl}`
     : `claude mcp add --transport http qig-memory ${mcpUrl} --header "Authorization: Bearer ${token}"`;
+  const hermesCommand = isOAuth
+    ? `hermes mcp add qig-memory --url ${mcpUrl} --auth oauth`
+    : `printf '%s\n' 'MCP_QIG_MEMORY_API_KEY=${token}' >> ~/.hermes/.env && hermes mcp add qig-memory --url ${mcpUrl} --auth header`;
+  const hermesYaml = isOAuth
+    ? `mcp_servers:\n  qig-memory:\n    url: "${mcpUrl}"\n    auth: oauth`
+    : `mcp_servers:\n  qig-memory:\n    url: "${mcpUrl}"\n    headers:\n      Authorization: "Bearer ${token}"`;
   const canCopyAuthenticated = isOAuth || Boolean(token);
 
   function forget() {
@@ -181,6 +187,38 @@ export function McpConnector() {
           <SecureCopyButton value={mcpJson} label="Copy config" variant="outline" size="sm" hasCredential={canCopyAuthenticated} onMissing={() => setMissingKey(true)} />
         </div>
         <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-muted/60 p-4 font-mono text-sm leading-relaxed text-foreground"><code>{mcpJson}</code></pre>
+      </div>
+
+      <div className="mt-10 border-t border-border pt-8">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Plug className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Add to Hermes Desktop</h3>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              {isOAuth
+                ? 'Hermes discovers the OAuth server, opens Vercel sign-in, and securely caches its token on first connection.'
+                : 'The command saves your remembered key to the Hermes environment file before adding the authenticated server.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-xl border border-border bg-muted/60 px-4 py-3 font-mono text-sm text-foreground">{hermesCommand}</code>
+          <SecureCopyButton value={hermesCommand} label="Copy Hermes command" hasCredential={canCopyAuthenticated} onMissing={() => setMissingKey(true)} />
+        </div>
+
+        <div className="mt-5 flex items-center justify-between gap-3">
+          <span className="font-mono text-sm font-medium text-foreground">~/.hermes/config.yaml</span>
+          <SecureCopyButton value={hermesYaml} label="Copy Hermes config" variant="outline" size="sm" hasCredential={canCopyAuthenticated} onMissing={() => setMissingKey(true)} />
+        </div>
+        <pre className="mt-3 overflow-x-auto rounded-xl border border-border bg-muted/60 p-4 font-mono text-sm leading-relaxed text-foreground"><code>{hermesYaml}</code></pre>
+        {isOAuth ? (
+          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+            After adding the server, run <code className="font-mono text-foreground">hermes mcp login qig-memory</code> if Hermes does not open the authorization flow automatically.
+          </p>
+        ) : null}
       </div>
 
       <Dialog open={missingKey} onOpenChange={setMissingKey}>

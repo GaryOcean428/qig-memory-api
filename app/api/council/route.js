@@ -26,7 +26,14 @@ export async function POST(req) {
     if (!body.question || typeof body.question !== 'string') {
       return NextResponse.json({ error: 'invalid_input', message: 'question is required' }, { status: 400 });
     }
-    return NextResponse.json(await conveneCouncil(body));
+    const result = await conveneCouncil(body);
+    if (result.error === 'cooldown') {
+      return NextResponse.json(result, { status: 429, headers: { 'retry-after': String(result.retry_after_seconds) } });
+    }
+    if (result.error) {
+      return NextResponse.json(result, { status: 400 });
+    }
+    return NextResponse.json(result);
   } catch (error) {
     return errorResponse(error);
   }

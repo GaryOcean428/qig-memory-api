@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { PanelLeft, Sparkles } from 'lucide-react';
@@ -24,6 +24,9 @@ export function ChatPanel({ conversationId, initialMessages = [], onMessagesChan
     transport: new DefaultChatTransport({ api: '/api/chat' }),
   });
   const viewportRef = useRef(null);
+  // Seed for the composer when the user clicks "edit" on a previous message.
+  // The nonce forces the composer to re-apply even for identical text.
+  const [editSeed, setEditSeed] = useState(null);
 
   const busy = status === 'submitted' || status === 'streaming';
   const isEmpty = messages.length === 0;
@@ -97,7 +100,13 @@ export function ChatPanel({ conversationId, initialMessages = [], onMessagesChan
         <ScrollArea className="flex-1" viewportRef={viewportRef}>
           <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 lg:max-w-5xl xl:max-w-7xl xl:px-8">
             {messages.map((m) => (
-              <ChatMessage key={m.id} message={m} />
+              <ChatMessage
+                key={m.id}
+                message={m}
+                busy={busy}
+                onEdit={(text) => setEditSeed({ text, nonce: Date.now() })}
+                onResend={submit}
+              />
             ))}
             {error ? (
               <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-2.5 text-xs text-destructive">
@@ -111,7 +120,7 @@ export function ChatPanel({ conversationId, initialMessages = [], onMessagesChan
       {/* Composer */}
       <div className="border-t border-border bg-background">
         <div className="mx-auto w-full max-w-3xl lg:max-w-5xl xl:max-w-7xl xl:px-4">
-          <ChatComposer onSubmit={submit} busy={busy} />
+          <ChatComposer onSubmit={submit} busy={busy} seed={editSeed} />
         </div>
       </div>
     </div>

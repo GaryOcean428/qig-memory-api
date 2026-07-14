@@ -1,128 +1,71 @@
 'use client';
 
-import { Fragment } from 'react';
-import { Bot, User, Wrench, Check, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Bot, User, Wrench, Check, Loader2, Copy, Pencil, RotateCcw } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
-// Render inline markdown emphasis (**bold**, *italic*, `code`) as React nodes.
-function renderInline(text) {
-  const nodes = [];
-  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
-  let last = 0;
-  let match;
-  let i = 0;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > last) nodes.push(text.slice(last, match.index));
-    const token = match[0];
-    if (token.startsWith('**')) {
-      nodes.push(<strong key={i++} className="font-semibold text-foreground">{token.slice(2, -2)}</strong>);
-    } else if (token.startsWith('`')) {
-      nodes.push(
-        <code key={i++} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] text-primary">
-          {token.slice(1, -1)}
-        </code>,
-      );
-    } else {
-      nodes.push(<em key={i++}>{token.slice(1, -1)}</em>);
-    }
-    last = match.index + token.length;
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
+// Markdown component overrides tuned to the chat bubble type scale.
+const MD_COMPONENTS = {
+  h1: ({ children }) => <h3 className="mt-3 text-base font-semibold text-foreground first:mt-0">{children}</h3>,
+  h2: ({ children }) => <h4 className="mt-3 text-sm font-semibold text-foreground first:mt-0">{children}</h4>,
+  h3: ({ children }) => <h5 className="mt-2 text-sm font-semibold text-foreground first:mt-0">{children}</h5>,
+  h4: ({ children }) => <h6 className="mt-2 text-sm font-medium text-foreground first:mt-0">{children}</h6>,
+  h5: ({ children }) => <h6 className="mt-2 text-sm font-medium text-foreground first:mt-0">{children}</h6>,
+  h6: ({ children }) => <h6 className="mt-2 text-sm font-medium text-foreground first:mt-0">{children}</h6>,
+  p: ({ children }) => <p className="text-pretty">{children}</p>,
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+    >
+      {children}
+    </a>
+  ),
+  ul: ({ children }) => <ul className="my-1 ml-4 list-disc space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="my-1 ml-4 list-decimal space-y-1">{children}</ol>,
+  li: ({ children }) => <li className="[&>p]:inline">{children}</li>,
+  hr: () => <hr className="my-3 border-border" />,
+  blockquote: ({ children }) => (
+    <blockquote className="my-1 border-l-2 border-primary/40 pl-3 text-muted-foreground">{children}</blockquote>
+  ),
+  code: ({ node, className, children, ...rest }) => {
+    const isInline = !rest.hasOwnProperty('data-sourcepos') && !(node?.position && className);
+    // In react-markdown v10 the simplest inline check: if there is no className
+    // (no language-xxx) and the parent is not <pre>, it's inline.
+    const hasLang = /language-(\w+)/.test(className || '');
+    return !hasLang ? (
+      <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] text-primary">{children}</code>
+    ) : (
+      <code className={cn('font-mono text-xs', className)}>{children}</code>
+    );
+  },
+  pre: ({ children }) => (
+    <pre className="my-1 overflow-x-auto rounded-lg border border-border bg-muted/50 p-3">{children}</pre>
+  ),
+  table: ({ children }) => (
+    <div className="my-1 overflow-x-auto rounded-lg border border-border">
+      <table className="w-full border-collapse text-xs">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="border-b border-border bg-muted/50">{children}</thead>,
+  th: ({ children }) => <th className="px-3 py-1.5 text-left font-semibold text-foreground">{children}</th>,
+  tr: ({ children }) => <tr className="border-b border-border/50 last:border-0">{children}</tr>,
+  td: ({ children }) => <td className="px-3 py-1.5 align-top text-muted-foreground">{children}</td>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+};
 
-// Split a GFM table row `| a | b |` into trimmed cells.
-function splitRow(line) {
-  return line
-    .trim()
-    .replace(/^\||\|$/g, '')
-    .split('|')
-    .map((c) => c.trim());
-}
-
-const isTableSeparator = (line) => /^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/.test(line) && line.includes('-');
-const isTableRow = (line) => line.includes('|') && line.trim().length > 1;
-
-// Minimal block renderer: paragraphs, lists, and GFM-style tables.
 function Markdown({ text }) {
-  const lines = text.split('\n');
-  const blocks = [];
-  let list = null;
-
-  const flush = () => {
-    if (list) {
-      blocks.push(
-        <ul key={`ul-${blocks.length}`} className="my-1 ml-4 list-disc space-y-1">
-          {list.map((item, idx) => (
-            <li key={idx}>{renderInline(item)}</li>
-          ))}
-        </ul>,
-      );
-      list = null;
-    }
-  };
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Table: a header row immediately followed by a separator row.
-    if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
-      flush();
-      const header = splitRow(line);
-      const rows = [];
-      i += 2;
-      while (i < lines.length && isTableRow(lines[i]) && !isTableSeparator(lines[i])) {
-        rows.push(splitRow(lines[i]));
-        i++;
-      }
-      i--;
-      blocks.push(
-        <div key={`t-${blocks.length}`} className="my-1 overflow-x-auto rounded-lg border border-border">
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-border bg-muted/50">
-                {header.map((h, hi) => (
-                  <th key={hi} className="px-3 py-1.5 text-left font-semibold text-foreground">
-                    {renderInline(h)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, ri) => (
-                <tr key={ri} className="border-b border-border/50 last:border-0">
-                  {row.map((cell, ci) => (
-                    <td key={ci} className="px-3 py-1.5 align-top text-muted-foreground">
-                      {renderInline(cell)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>,
-      );
-      continue;
-    }
-
-    const bullet = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
-    if (bullet) {
-      if (!list) list = [];
-      list.push(bullet[1]);
-    } else if (line.trim() === '') {
-      flush();
-    } else {
-      flush();
-      blocks.push(
-        <p key={`p-${blocks.length}`} className="text-pretty">
-          {renderInline(line)}
-        </p>,
-      );
-    }
-  }
-  flush();
-
-  return <div className="space-y-2">{blocks.map((b, i) => <Fragment key={i}>{b}</Fragment>)}</div>;
+  return (
+    <div className="space-y-2">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 // Compact chip describing a single tool call (part.type === "tool-<name>").
@@ -151,13 +94,43 @@ function ToolChip({ part }) {
   );
 }
 
-export function ChatMessage({ message }) {
+function ActionButton({ label, onClick, icon: Icon, active }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={cn(
+        'flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+        active && 'text-primary',
+      )}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+    </button>
+  );
+}
+
+export function ChatMessage({ message, busy, onEdit, onResend }) {
   const isUser = message.role === 'user';
   const textParts = message.parts.filter((p) => p.type === 'text' && p.text);
   const toolParts = message.parts.filter((p) => typeof p.type === 'string' && p.type.startsWith('tool-'));
+  const [copied, setCopied] = useState(false);
+
+  const fullText = textParts.map((p) => p.text).join('\n\n');
+
+  async function copyText() {
+    try {
+      await navigator.clipboard.writeText(fullText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable (permissions/insecure context) — nothing to do.
+    }
+  }
 
   return (
-    <div className={cn('flex w-full gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
+    <div className={cn('group flex w-full gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
       <div
         className={cn(
           'flex size-8 shrink-0 items-center justify-center rounded-full border border-border',
@@ -194,6 +167,33 @@ export function ChatMessage({ message }) {
             )}
           </div>
         ))}
+
+        {/* Message actions — visible on hover/focus, always reachable by keyboard */}
+        {fullText && (
+          <div
+            className={cn(
+              'flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+              isUser ? 'flex-row-reverse' : 'flex-row',
+            )}
+          >
+            <ActionButton
+              label={copied ? 'Copied' : 'Copy message'}
+              onClick={copyText}
+              icon={copied ? Check : Copy}
+              active={copied}
+            />
+            {isUser && onEdit ? (
+              <ActionButton label="Edit message" onClick={() => onEdit(fullText)} icon={Pencil} />
+            ) : null}
+            {isUser && onResend ? (
+              <ActionButton
+                label={busy ? 'Wait for the current reply to finish' : 'Resend message'}
+                onClick={() => !busy && onResend(fullText)}
+                icon={RotateCcw}
+              />
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   );

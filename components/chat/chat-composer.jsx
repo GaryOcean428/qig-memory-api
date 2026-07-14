@@ -19,9 +19,17 @@ const SLASH_COMMANDS = [
 // Rich chat composer: auto-resizing textarea, integrated speech-to-text mic
 // (Web Speech API), and a send control. Final speech chunks are appended to the
 // draft; interim words render as a live ghost preview inside the field.
-export function ChatComposer({ onSubmit, busy, placeholder = 'Message the helper agent…' }) {
+export function ChatComposer({ onSubmit, busy, seed, placeholder = 'Message the helper agent…' }) {
   const [input, setInput] = useState('');
   const textareaRef = useRef(null);
+
+  // When the user clicks "edit" on a previous message, load it into the draft.
+  useEffect(() => {
+    if (seed?.text != null) {
+      setInput(seed.text);
+      textareaRef.current?.focus();
+    }
+  }, [seed]);
 
   const { isSupported, isListening, interim, error, toggle, stop } = useSpeechRecognition({
     onResult: (finalText) => {

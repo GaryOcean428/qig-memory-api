@@ -1,111 +1,63 @@
 ---
 name: qig-agent-comms
-description: Use the QIG Memory API safely from an agent through MCP or CLI/REST. Trigger for persistent memory, session recall, memory search or updates, QIG API keys, MCP connection setup, kernel agent registration/heartbeats, namespace selection, basin/Fisher-Rao retrieval, or coordination with other agents. Also trigger when planning inbox or artifact operations, but never claim those deferred tools exist.
-compatibility: Requires access to the QIG Memory server and either an OAuth-capable MCP client or QIG_API_KEY bearer credential.
+description: Use the QIG Memory API safely through MCP or CLI/REST for persistent memory, session recall, inbox coordination, direct large-artifact transfer, helper guidance, kernel status, and Fisher-Rao retrieval.
+compatibility: Requires the QIG Memory server and OAuth MCP access or a QIG_API_KEY bearer credential.
 ---
 
 # QIG Agent Communications
 
-Use QIG Memory as durable shared state. Prefer MCP because it handles authentication, schemas, and scopes; use CLI/REST for setup, diagnostics, automation, or when MCP is unavailable.
+Use QIG Memory as durable shared state. Prefer MCP at `/api/mcp`; use authenticated REST for scripts and diagnostics. At session start, read the MCP resource `qig://agent-helper` or call `helper_ask` when tool choice or recovery is unclear.
 
 ## Start every session
 
-1. Identify the work lane before reading: `qig_`, `bsuite_`, `vex_`, `pantheon_`, `_dev_`, or `_user_`.
-2. Never cross lanes merely because a record is discoverable. Ask before accessing another product/user lane.
-3. Prefer `memory_list({ keysOnly: true, prefix })` to discover keys without downloading the corpus.
-4. Read only the small set of relevant records with `memory_get` or narrow `memory_search`.
-5. Use memory silently as context. Do not announce “I see in memory” unless provenance matters.
-6. Check `kernel_status` when work depends on other agents. Use `kernel_sync({ agent_id })` only to inspect the peer mesh and optional Fisher–Rao distances from a registered agent; it does not register or heartbeat agents.
+1. Select the memory prefix and inbox namespace before reading.
+2. Discover memory with `memory_list({ keysOnly: true, prefix })`, then narrow with `memory_search` and `memory_get`.
+3. Check `inbox_list` for your recipient and broadcasts; `inbox_read` relevant messages and `inbox_ack` completed work.
+4. Check `kernel_status` when work depends on peer agents.
+5. Use `helper_ask` for live, read-only operational guidance. It can inspect but cannot mutate the service.
 
-## Choose a surface
+## Tools and scopes
 
-### MCP (preferred)
+- `memory:read`: `memory_get`, `memory_list`, `memory_search`, `kernel_status`, `kernel_sync`, `inbox_list`, `inbox_read`, `artifact_manifest`, `artifact_get_rows`, `helper_ask`.
+- `memory:write`: `memory_put`, `memory_post`, `inbox_send`, `inbox_ack`, `inbox_sweep`, `artifact_put`, `artifact_finalize`.
+- `memory:admin`: `memory_delete`; it also implies read/write for API-key operators.
 
-Connect to `/api/mcp` using OAuth when supported. Request only the scopes needed:
-
-- `memory:read`: get, list, search, and kernel status.
-- `memory:write`: put, patch, and kernel sync.
-- `memory:admin`: delete and administrative operations.
-
-Current tools: `memory_get`, `memory_list`, `memory_put`, `memory_post`, `memory_delete`, `memory_search`, `kernel_status`, and `kernel_sync`.
-
-Read [references/mcp.md](references/mcp.md) before configuring or invoking MCP.
-
-### CLI / REST (fallback)
-
-Keep credentials in environment variables; never paste, print, log, commit, or place them in command history where avoidable.
-
-```sh
-export QIG_MEMORY_URL="https://<memory-server>"
-export QIG_API_KEY="<secret>"
-```
-
-Send `Authorization: Bearer $QIG_API_KEY`. Do not use Blob tokens: agents access the API, not storage. Read [references/cli-rest.md](references/cli-rest.md) for commands, status handling, and pagination.
+Read [references/mcp.md](references/mcp.md) for exact MCP schemas and [references/cli-rest.md](references/cli-rest.md) for authenticated curl flows.
 
 ## Namespace discipline
 
-Select exactly one lane for a task:
+Memory keys use product prefixes such as `qig_`, `bsuite_`, `vex_`, `pantheon_`, `_dev_`, and `_user_`. Inbox messages use one namespace: `qig`, `bsuite`, or `general`; broadcasts use `to: "broadcast"`. Do not cross lanes merely because data is discoverable.
 
-| Prefix | Use |
-| --- | --- |
-| `qig_` | QIG research, geometry, kernels, and memory-server work |
-| `bsuite_` | BSuite product and operating context |
-| `vex_` | VEX-specific context |
-| `pantheon_` | Pantheon-specific context |
-| `_dev_` | Shared development mechanics that are intentionally cross-project |
-| `_user_` | User-owned preferences or context |
+## Durable inbox
 
-Do not invent an unprefixed shared key when a lane applies. Use stable, descriptive keys; update an existing canonical key rather than creating timestamped duplicates for the same concept. Per-agent mutable state must use its own key (for example `kernel_agent_<id>`), avoiding shared read-modify-write blobs.
+Send immutable envelopes with `from`, `to`, `namespace`, `type`, `subject`, and JSON `payload`; optionally include `in_reply_to` and `expires_at`. Message UUIDs are globally indexed, so `inbox_read({ id })` and `inbox_ack({ id })` need no lane fields. Reads and acknowledgements are idempotent. Follow cursors while `has_more`; sweep only expired messages in bounded batches.
 
-## Read and recall
+## Large artifacts
 
-- Enumerate with `keysOnly: true`; it auto-paginates the complete key index.
-- Full-content listing is paginated. Follow `cursor` while `has_more` is true, or deliberately set `all: true` for a bounded corpus.
-- Narrow by `prefix`, `category`, or a specific key before broad text search.
-- Treat `not_found` as absence, not an empty record.
-- Use `GET /api/memory/<key>?bump=1` only when retrieval telemetry should be updated.
-- Use `verify=1` on REST reads/searches for high-stakes freshness when supported by the endpoint.
+Artifacts are immutable raw little-endian Float32 matrices with shape `[N,64]`, a 256-byte row stride, and a 64 MiB ceiling.
 
-## Write continuously, not noisily
+1. Calculate SHA-256 over the exact raw bytes.
+2. Call `artifact_put({ name, version?, cols: 64, row_count, sha256 })`.
+3. Stream bytes directly to the returned short-lived private `PUT` URL with `Content-Type: application/octet-stream`. Never place bytes, base64, or float arrays in MCP JSON.
+4. Call `artifact_finalize({ name, version })`. The server publishes only after exact byte-length and SHA-256 verification, then broadcasts `artifact_updated`.
+5. Read metadata with `artifact_manifest`; pin a version for reproducibility.
+6. Call `artifact_get_rows({ name, version, start, end })`. Use the returned `Range` header with its signed URL, or the authenticated proxy fallback.
 
-Persist durable outcomes after they become true:
-
-- decisions and reversals;
-- merged commits/deployments and migration state;
-- validated hypotheses, kill/verdict outcomes, and important failures;
-- stable conventions another session must follow.
-
-Do not persist scratch reasoning, secrets, credentials, transient logs, speculative claims, or content already captured canonically elsewhere.
-
-Use `memory_put` to create or replace content. It preserves scoring fields when omitted. Use `memory_post` only for metadata/scoring (`usefulness_delta`, `usefulness_set`, `source`, `promoted`, or `basin`) and never expect it to replace content. Keep content under 1 MiB. Delete only with explicit authority and `memory:admin`.
-
-After a high-stakes write, read it back and compare the key/content or other expected fields. Resolve concurrent updates by rereading and merging intentionally; never blindly overwrite shared state.
+For rows `[start,end)`, request bytes `start * 256` through `end * 256 - 1` inclusive. Verify returned manifest hash before trusting a complete download.
 
 ## Geometry hygiene
 
-Basin vectors are probability-simplex coordinates: finite, non-negative, positive sum, and normalized by the server. Compare/rank them with Fisher–Rao geodesic distance through `memory_search({ basin })`. Never substitute cosine similarity for basin retrieval. Do not attach arbitrary embeddings as basins.
+Basin vectors are probability-simplex coordinates. Compare/rank only with Fisher-Rao geodesic distance through basin search or kernel sync. Never substitute cosine or Euclidean distance.
 
-## Errors and recovery
+## Security and recovery
 
-- `401 invalid_token`: credential missing/invalid; reconnect MCP or replace the API key.
-- `403 insufficient_scope`: request approval for the specific scope; do not retry with the same grant.
-- `404 not_found`: verify key and namespace.
-- `409`: resolve a conflict/rate condition; reread before retrying writes.
-- `413`: content or request is too large; do not split a binary artifact into memory records.
-- `429`: honor `Retry-After` and use bounded exponential backoff with jitter.
-- `5xx`/network failure: retry idempotent reads; retry writes only after checking whether they committed.
-
-Never fall back to direct Blob access. The private Blob is an implementation detail; only the migration utility is allowed to see source and destination stores.
-
-## Deferred capabilities
-
-The inter-agent inbox (`inbox_*`) and versioned binary artifact store (`artifact_*`) are designed but not shipped. Do not call, document as available, or emulate them with shared read-modify-write records. Until inbox ships, coordinate through explicitly owned per-agent memory keys. Large `[N,64]` float32 artifacts require the future artifact route and must not enter the 1 MiB record store.
+Never expose API keys, Blob tokens, canonical private Blob URLs, or migration credentials. Retry idempotent reads; after uncertain writes, reread before retrying. Resolve `409` by rereading/versioning, `413` by using the artifact path instead of JSON, `422` by regenerating the exact artifact bytes, and `429` with bounded exponential backoff and jitter.
 
 ## Completion checklist
 
-- Correct namespace and least-privilege scope used.
-- Relevant session-start memories read without bulk corpus download.
-- Durable outcomes written once to canonical keys.
-- Important writes read back and verified.
-- No secrets, Blob credentials/URLs, or unsupported tools exposed.
-- Any basin operation used Fisher–Rao semantics.
+- Correct memory prefix and inbox namespace used.
+- Inbox checked and completed messages acknowledged.
+- Durable outcomes stored once at canonical keys.
+- Large binary data transferred directly and finalized with integrity verification.
+- Basin operations used Fisher-Rao semantics.
+- No secrets or private storage credentials exposed.

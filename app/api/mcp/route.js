@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { toolDefs } from '../../../lib/qig-tools';
 import { authenticate, hasScope, unauthorizedReason } from '../../../lib/auth.js';
 import { currentPrincipal, withPrincipal } from '../../../lib/auth-context.js';
+import { HELPER_GUIDE, HELPER_RESOURCE_URI } from '../../../lib/helper-agent.js';
 
 // Streamable-HTTP MCP server exposing the QIG toolset. Built from the SAME
 // `toolDefs` the helper agent uses, so the MCP surface and the in-app agent can
@@ -11,6 +12,19 @@ import { currentPrincipal, withPrincipal } from '../../../lib/auth-context.js';
 // basePath "/api" => this handler serves the streamable-HTTP endpoint at /api/mcp.
 const handler = createMcpHandler(
   (server) => {
+    server.registerResource(
+      'agent-helper',
+      HELPER_RESOURCE_URI,
+      {
+        title: 'QIG Agent Helper',
+        description: 'Canonical setup, tool-selection, namespace, artifact, geometry, security, and recovery guidance.',
+        mimeType: 'text/markdown',
+      },
+      async (uri) => ({
+        contents: [{ uri: uri.href, mimeType: 'text/markdown', text: HELPER_GUIDE }],
+      }),
+    );
+
     for (const [name, def] of Object.entries(toolDefs)) {
       server.registerTool(
         name,
@@ -21,11 +35,7 @@ const handler = createMcpHandler(
         async (args) => {
           try {
             const principal = currentPrincipal();
-            const requiredScope = name === 'memory_delete'
-              ? 'memory:admin'
-              : ['memory_put', 'memory_post'].includes(name)
-                ? 'memory:write'
-                : 'memory:read';
+            const requiredScope = def.requiredScope || (name === 'memory_delete' ? 'memory:admin' : ['memory_put', 'memory_post'].includes(name) ? 'memory:write' : 'memory:read');
             if (!hasScope(principal, requiredScope)) {
               throw new Error(`insufficient_scope: ${requiredScope} required`);
             }

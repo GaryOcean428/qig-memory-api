@@ -6,6 +6,10 @@
     {
       "path": "/api/cron/coordize",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/inbox-sweep",
+      "schedule": "0 * * * *"
     }
   ]
 }

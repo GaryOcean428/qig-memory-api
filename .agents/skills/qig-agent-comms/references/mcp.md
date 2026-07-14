@@ -1,121 +1,73 @@
 # MCP reference
 
-## Connect
+Connect to `https://<memory-server>/api/mcp` with OAuth or `Authorization: Bearer ${QIG_API_KEY}`. Let the MCP SDK manage JSON-RPC/SSE framing. Use `resources/list` and `resources/read` to load `qig://agent-helper`.
 
-Endpoint:
+## Memory and kernel
 
-```text
-https://<memory-server>/api/mcp
-```
+- `memory_get({ key })`
+- `memory_list({ category?, prefix?, limit?, keysOnly?, cursor?, all? })`
+- `memory_put({ key, content, category?, source? })`
+- `memory_post({ key, usefulness_delta?, usefulness_set?, source?, promoted?, basin? })`
+- `memory_delete({ key })` — admin only.
+- `memory_search({ query?, category?, prefix?, basin?, limit? })` — basin ranking is Fisher-Rao.
+- `kernel_status({})`
+- `kernel_sync({ agent_id? })`
 
-Prefer an MCP client that supports remote HTTP and OAuth discovery. The server publishes authorization and protected-resource metadata under `/.well-known/`. Complete browser consent and request only the required scopes.
-
-If the client supports bearer headers but not OAuth, configure the key through its secret/environment facility:
-
-```json
-{
-  "mcpServers": {
-    "qig-memory": {
-      "url": "https://<memory-server>/api/mcp",
-      "headers": {
-        "Authorization": "Bearer ${QIG_API_KEY}"
-      }
-    }
-  }
-}
-```
-
-Do not commit a literal key. Environment interpolation syntax varies by client; verify the client’s documentation. A configuration accepted by one agent runtime may not be accepted by another.
-
-## Transport behavior
-
-The endpoint accepts JSON-RPC over HTTP POST. Send `Content-Type: application/json` and `Accept: application/json, text/event-stream`. A successful response may be JSON or SSE depending on the MCP client/transport version. Let the MCP SDK manage protocol framing rather than hand-crafting JSON-RPC unless diagnosing the transport.
-
-## Tools
-
-### `memory_get`
-
-```json
-{ "key": "qig_example" }
-```
-
-Returns the record or `{ "error": "not_found", "key": "..." }`.
-
-### `memory_list`
-
-```json
-{ "prefix": "qig_", "keysOnly": true }
-```
-
-Use `keysOnly: true` for full discovery. For content pages, use `limit` and continue with the returned `cursor` while `has_more` is true. `all: true` intentionally loads all matching content and should be reserved for known-small sets.
-
-### `memory_put`
+## Inbox
 
 ```json
 {
-  "key": "qig_project_decisions",
-  "content": "Canonical, current decision...",
-  "category": "architecture",
-  "source": "agent-session"
+  "from": "studio-runner",
+  "to": "review-agent",
+  "namespace": "qig",
+  "type": "handoff",
+  "subject": "Review artifact",
+  "payload": { "name": "basin-run", "version": "v17" },
+  "expires_at": "2026-07-21T00:00:00.000Z"
 }
 ```
 
-Creates or replaces record content while preserving omitted scoring metadata.
+Call as `inbox_send`. List with `inbox_list({ namespace?, recipient?, status?, include_broadcast?, limit?, cursor? })`. Read by global UUID with `inbox_read({ id, mark_read? })`; complete with `inbox_ack({ id })`. Operators may call `inbox_sweep({ limit?, cursor? })` to delete expired envelopes in bounded batches.
 
-### `memory_post`
+## Artifacts
+
+Initiate:
 
 ```json
 {
-  "key": "qig_project_decisions",
-  "usefulness_delta": 0.1,
-  "promoted": true
+  "name": "basin-run",
+  "version": "v17",
+  "cols": 64,
+  "row_count": 250000,
+  "sha256": "<64 lowercase hex characters>"
 }
 ```
 
-Metadata-only patch. Valid patch fields are `usefulness_delta`, `usefulness_set`, `source`, `promoted`, and `basin`.
+`artifact_put` returns `upload.method`, a short-lived `upload.url`, required headers, and the server-selected version. The producing process sends raw little-endian Float32 bytes directly to this URL; MCP never carries them.
 
-### `memory_delete`
-
-```json
-{ "key": "qig_obsolete_record" }
-```
-
-Requires `memory:admin`. Confirm intent before invoking.
-
-### `memory_search`
-
-Text/filter search:
+Publish with:
 
 ```json
-{ "query": "private blob migration", "prefix": "qig_", "limit": 10 }
+{ "name": "basin-run", "version": "v17" }
 ```
 
-Geometric recall:
+Call as `artifact_finalize`. A published version is immutable and appears only after `byte_length == row_count * 256` and SHA-256 both pass.
+
+Read metadata with `artifact_manifest({ name, version? })`. Request rows with:
 
 ```json
-{ "basin": [0.2, 0.3, 0.5], "prefix": "qig_", "limit": 10 }
+{ "name": "basin-run", "version": "v17", "start": 100, "end": 200 }
 ```
 
-A basin query ranks by Fisher–Rao distance. Do not describe it as cosine or embedding similarity.
+`artifact_get_rows` returns an expiring signed direct URL, exact `range_header`, and authenticated `proxy_url`. Apply the range header to the direct URL. The proxy already encodes the row range and requires the same bearer credential.
 
-### `kernel_status`
+## Helper
 
-No arguments. Returns registered agents and heartbeat state. Use for discovery; do not infer an inbox from the registry.
+- Static resource: `qig://agent-helper`.
+- AI tool: `helper_ask({ question, context? })`.
 
-### `kernel_sync`
+The AI helper is intentionally read-only: it may inspect memory, inbox, manifests, kernel state, and basin retrieval, but cannot write, acknowledge, sweep, upload, finalize, or delete.
 
-Return the complete peer view. With no arguments it returns the mesh; with a registered `agent_id`, it also computes pairwise Fisher–Rao distance to peers that have basin coordinates:
+## Errors
 
-```json
-{ "agent_id": "stable-agent-id" }
-```
-
-This tool is read-only. It does not register agents, update heartbeats, or send messages.
-
-## Scope failures
-
-MCP authorization errors may arrive as HTTP `401`/`403` before JSON-RPC handling. Reconnect on `401`. On `403 insufficient_scope`, obtain approval for the named scope rather than broadening silently. OAuth clients may be read-only until an administrator grants operator scopes, and revoked clients must re-register/reconnect.
-
-## Unsupported tools
-
-Do not call `inbox_*` or `artifact_*` until the server advertises them in `tools/list`. Feature plans and memory notes are not proof that a tool exists; `tools/list` is authoritative.
+HTTP authorization may fail before JSON-RPC. Reconnect on `401`; request the named scope on `403`; fix schema on `400`; reread on `409`; do not put large binary data in JSON after `413`; regenerate bytes after artifact `422`; honor `Retry-After` on `429`.

@@ -6,6 +6,8 @@ import { KernelMeshViewer } from '@/components/admin/kernel-mesh-viewer';
 import { ApiKeysManager } from '@/components/admin/api-keys-manager';
 import { OAuthClientsManager } from '@/components/admin/oauth-clients-manager';
 import { DailyReviewerManager } from '@/components/admin/daily-reviewer-manager';
+import { DoctrineManager } from '@/components/admin/doctrine-manager';
+import { loadDoctrineAction } from '@/app/admin/actions';
 import { AuthButton } from '@/components/auth/auth-button';
 import { getSession } from '@/lib/session';
 import { listMemory, listKernelAgents, syncKernel } from '@/lib/memory-store';
@@ -44,13 +46,14 @@ export default async function AdminPage() {
   }
 
   // Authenticated: load initial data directly through the shared lib (server-side).
-  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport] = await Promise.all([
+  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine] = await Promise.all([
     listMemory({ keysOnly: true }),
     listKernelAgents(),
     listApiKeys(),
     listOAuthClients(),
     getReviewerConfig(),
     getLatestReport(),
+    loadDoctrineAction(),
   ]);
   const keys = index.records
     .slice()
@@ -68,6 +71,7 @@ export default async function AdminPage() {
           <ApiKeysManager initialKeys={apiKeys} />
           <OAuthClientsManager initialClients={oauthClients} />
           <DailyReviewerManager initialConfig={reviewerConfig} initialReport={reviewerReport} />
+          <DoctrineManager initialDoctrine={doctrine} />
         </Suspense>
       </main>
       <LegalFooter />

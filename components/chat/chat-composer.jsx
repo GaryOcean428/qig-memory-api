@@ -1,9 +1,20 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Mic, ArrowUp, Square, AudioLines } from 'lucide-react';
+import { Mic, ArrowUp, Square, AudioLines, Scale } from 'lucide-react';
 import { useSpeechRecognition } from '../../lib/use-speech-recognition';
 import { cn } from '../../lib/utils';
+
+// Slash commands the composer understands. The command text is sent as-is;
+// the chat route expands it server-side.
+const SLASH_COMMANDS = [
+  {
+    command: '/council',
+    icon: Scale,
+    hint: 'question',
+    description: 'Convene the 4-model council (Grok, Fable, Sol, Gemini) — slow and expensive, 5-min cooldown',
+  },
+];
 
 // Rich chat composer: auto-resizing textarea, integrated speech-to-text mic
 // (Web Speech API), and a send control. Final speech chunks are appended to the
@@ -39,8 +50,51 @@ export function ChatComposer({ onSubmit, busy, placeholder = 'Message the helper
 
   const canSend = input.trim().length > 0 && !busy;
 
+  // Slash-command menu: shown while the draft is an incomplete command prefix
+  // (e.g. "/", "/cou"), hidden once the full command + a space is typed.
+  const trimmed = input.trimStart();
+  const commandMatches =
+    trimmed.startsWith('/') && !trimmed.includes(' ')
+      ? SLASH_COMMANDS.filter((c) => c.command.startsWith(trimmed.toLowerCase()))
+      : [];
+
+  function pickCommand(command) {
+    setInput(`${command} `);
+    textareaRef.current?.focus();
+  }
+
   return (
-    <div className="px-4 pb-4 pt-2">
+    <div className="relative px-4 pb-4 pt-2">
+      {/* Slash-command menu */}
+      {commandMatches.length > 0 && (
+        <div
+          role="listbox"
+          aria-label="Slash commands"
+          className="absolute bottom-full left-4 right-4 z-10 mb-1 overflow-hidden rounded-xl border border-border bg-popover shadow-lg"
+        >
+          {commandMatches.map(({ command, icon: Icon, hint, description }) => (
+            <button
+              key={command}
+              type="button"
+              role="option"
+              aria-selected="true"
+              onClick={() => pickCommand(command)}
+              className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-muted"
+            >
+              <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Icon className="size-3.5" aria-hidden="true" />
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-baseline gap-1.5 text-sm">
+                  <span className="font-mono font-medium text-foreground">{command}</span>
+                  <span className="font-mono text-xs text-muted-foreground">{'<'}{hint}{'>'}</span>
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">{description}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       <div
         className={cn(
           'group relative flex flex-col rounded-2xl border border-border bg-background transition-shadow',
@@ -74,6 +128,11 @@ export function ChatComposer({ onSubmit, busy, placeholder = 'Message the helper
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
+            if (e.key === 'Tab' && commandMatches.length === 1) {
+              e.preventDefault();
+              pickCommand(commandMatches[0].command);
+              return;
+            }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
               e.preventDefault();
               submit();
@@ -95,7 +154,7 @@ export function ChatComposer({ onSubmit, busy, placeholder = 'Message the helper
             {error ? (
               <span className="text-destructive">Mic error: {error}</span>
             ) : isSupported ? (
-              <span className="hidden sm:inline">Enter to send · Shift+Enter for newline</span>
+              <span className="hidden sm:inline">Enter to send · Shift+Enter for newline · / for commands</span>
             ) : (
               <span className="hidden sm:inline">Speech input not supported in this browser</span>
             )}

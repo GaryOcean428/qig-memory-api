@@ -98,6 +98,7 @@ export async function POST(req) {
     const { peers } = await syncKernel(agent_id);
     const trimmed = {};
     for (const [id, p] of Object.entries(peers)) {
+      if (id === agent_id) continue;
       if (!p.basin_coords) continue;
       trimmed[id] = {
         substrate: p.substrate,

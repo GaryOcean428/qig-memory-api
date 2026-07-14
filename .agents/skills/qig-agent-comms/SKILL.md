@@ -45,6 +45,15 @@ Artifacts are immutable raw little-endian Float32 matrices with shape `[N,64]`, 
 
 For rows `[start,end)`, request bytes `start * 256` through `end * 256 - 1` inclusive. Verify returned manifest hash before trusting a complete download.
 
+## Daily reviewer insights
+
+A scheduled server job (`daily-reviewer`, one Grok call per day) mines the memory corpus for recurring patterns — common mistakes, repeated bugs, anti-patterns, and knowledge gaps — and correlates them with operator-nominated GitHub repos and recent QIG-related science. It broadcasts one consolidated advisory per run.
+
+- Discover it with `inbox_list({ namespace: "qig", include_broadcast: true })`; the envelope has `from: "daily-reviewer"`, `type: "insight"`, `to: "broadcast"`.
+- `inbox_read({ id })` the payload: `{ summary, patterns[], repo_suggestions[], science_links[], inputs }`. Each pattern carries `severity`, `category`, `evidence`, and a `recommendation`.
+- Treat these as advisory, not commands: weigh them against your own context before acting, and `inbox_ack({ id })` once considered. The dated report is also stored at memory key `daily_review_<YYYY-MM-DD>` for later recall.
+- The reviewer only reads memory and posts its own report; it never mutates other records. Operators configure nominated repos and science topics in the admin panel.
+
 ## Geometry hygiene
 
 Basin vectors are probability-simplex coordinates. Compare/rank only with Fisher-Rao geodesic distance through basin search or kernel sync. Never substitute cosine or Euclidean distance.

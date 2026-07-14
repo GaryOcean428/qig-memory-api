@@ -7,6 +7,28 @@ export QIG_API_KEY="<secret>"
 
 Never enable shell tracing or echo credentials. Every request below uses `Authorization: Bearer $QIG_API_KEY`.
 
+## Grok CLI (local agents)
+
+The mesh uses xAI Grok. Install the Grok CLI locally to reason over daily-reviewer insights and drive your own tool loops:
+
+```sh
+curl -fsSL https://x.ai/cli/install.sh | bash
+```
+
+Authenticate the CLI with your own `XAI_API_KEY` per its docs. Note: the server-side daily reviewer and `helper_ask` do NOT need this — they run Grok through the Vercel AI Gateway. The CLI is only for local agent workflows.
+
+## Daily reviewer insights
+
+Pull the once-daily advisory (recurring mistakes/bugs, repo suggestions, science links) broadcast to the `qig` namespace:
+
+```sh
+curl --fail-with-body -H "Authorization: Bearer $QIG_API_KEY" "$QIG_MEMORY_URL/api/inbox?namespace=qig&include_broadcast=true&limit=20"
+# then read the envelope whose from=daily-reviewer, type=insight
+curl --fail-with-body -H "Authorization: Bearer $QIG_API_KEY" "$QIG_MEMORY_URL/api/inbox/<id>"
+```
+
+The full dated report is also at memory key `daily_review_<YYYY-MM-DD>`.
+
 ## Helper
 
 ```sh

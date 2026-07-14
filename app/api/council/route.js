@@ -1,14 +1,20 @@
 import { NextResponse } from 'next/server';
-import { askHelper, HELPER_GUIDE, HELPER_RESOURCE_URI } from '../../../lib/helper-agent';
+import { conveneCouncil, COUNCIL_MEMBERS, COUNCIL_SYNTHESIZER } from '../../../lib/council';
 import { deniedResponse, errorResponse, requireApiScope } from '../../../lib/http-auth';
 
-// Raised from 60 so the helper can await council_convene when explicitly asked.
+// The council runs 9 sequential-ish model calls across 3 phases; give it room.
 export const maxDuration = 300;
 
 export async function GET(req) {
   const authorization = await requireApiScope(req, 'memory:read');
   if (authorization.error) return deniedResponse(authorization);
-  return NextResponse.json({ uri: HELPER_RESOURCE_URI, mime_type: 'text/markdown', guide: HELPER_GUIDE });
+  return NextResponse.json({
+    members: COUNCIL_MEMBERS.map((m) => ({ name: m.name, model: m.model, fallback: m.fallback })),
+    synthesizer: COUNCIL_SYNTHESIZER,
+    phases: ['panel', 'reflect', 'synthesis'],
+    doctrine_key: 'qig_doctrine_council',
+    note: 'POST { question, context?, convener? }. Expensive (9 model calls) — convene sparingly.',
+  });
 }
 
 export async function POST(req) {
@@ -19,7 +25,7 @@ export async function POST(req) {
     if (!body.question || typeof body.question !== 'string') {
       return NextResponse.json({ error: 'invalid_input', message: 'question is required' }, { status: 400 });
     }
-    return NextResponse.json(await askHelper(body));
+    return NextResponse.json(await conveneCouncil(body));
   } catch (error) {
     return errorResponse(error);
   }

@@ -59,7 +59,9 @@ const handler = createMcpHandler(
   { basePath: '/api' },
 );
 
-export const maxDuration = 60;
+// council_convene runs a 3-phase multi-model deliberation (1-2 minutes); the MCP
+// surface must outlive it. All other tools remain fast.
+export const maxDuration = 300;
 
 // The MCP tools operate the SAME memory store as the REST API, so the endpoint
 // must enforce the SAME bearer auth — otherwise it is a full bypass of the

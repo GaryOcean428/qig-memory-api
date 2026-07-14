@@ -89,7 +89,7 @@ const outcomes = await mapBounded(blobs, async (blob) => {
 });
 
 const failed = outcomes.filter((item) => item.status === 'failed');
-const allVerified = apply && failed.length === 0 && outcomes.every((item) => ['verified_existing', 'copied_verified'].includes(item.status));
+const allVerified = failed.length === 0 && outcomes.every((item) => ['verified_existing', 'copied_verified'].includes(item.status));
 let deleted = 0;
 if (cleanup) {
   if (!allVerified) throw new Error('Cleanup refused: every source object must have a hash-verified destination');

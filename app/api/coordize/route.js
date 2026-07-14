@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { auth } from '../../../lib/auth.js';
+import { auth, unauthorizedReason } from '../../../lib/auth.js';
+import { putMemory } from '../../../lib/memory-store.js';
 
 const KERNEL_API_KEY = process.env.KERNEL_API_KEY || '';
 
@@ -27,7 +28,8 @@ const MODAL_COORDIZE_URL = process.env.MODAL_COORDIZE_URL ||
  *            harvest_meta, pga_dim, elapsed_seconds }
  */
 export async function POST(req) {
-  if (!auth(req)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!(await auth(req)))
+    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
 
   const body = await req.json();
   const { texts, store_key, min_contexts = 1, target_tokens = 0, lens_dim = 32 } = body;
@@ -57,29 +59,29 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Coordize returned failure', detail: result }, { status: 502 });
     }
 
-    // Store basin coords if requested
+    // Store basin coords if requested — write through the shared lib directly
+    // (no public-URL round-trip, no CDN-propagation coupling, no bearer needed).
     if (store_key) {
-      await fetch(`https://qig-memory-api.vercel.app/api/memory/${store_key}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: 'kernel_state',
-          content: JSON.stringify({
-            basin_coords: result.basin_coords,
-            lens_coords: result.lens_coords,
-            harvest_meta: result.harvest_meta,
-            eigenvalues: result.eigenvalues,
-            computed_at: new Date().toISOString(),
-          }),
-          updated: new Date().toISOString(),
+      await putMemory(store_key, {
+        category: 'kernel_state',
+        content: JSON.stringify({
+          basin_coords: result.basin_coords,
+          lens_coords: result.lens_coords,
+          harvest_meta: result.harvest_meta,
+          eigenvalues: result.eigenvalues,
+          computed_at: new Date().toISOString(),
         }),
+        basin: result.basin_coords || null,
+        source: 'coordize',
       });
       result.stored_at = store_key;
     }
 
     return NextResponse.json(result);
   } catch (err) {
-    return NextResponse.json({ error: err.message, stack: err.stack?.slice(0, 500) }, { status: 500 });
+    // Never leak stack traces to clients. Log server-side, return a clean message.
+    console.log('[v0] coordize error:', err?.stack || err?.message || err);
+    return NextResponse.json({ error: 'coordize_failed', detail: err.message }, { status: 500 });
   }
 }
 

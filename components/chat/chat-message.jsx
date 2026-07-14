@@ -31,7 +31,19 @@ function renderInline(text) {
   return nodes;
 }
 
-// Minimal block renderer: paragraphs + unordered/ordered list items.
+// Split a GFM table row `| a | b |` into trimmed cells.
+function splitRow(line) {
+  return line
+    .trim()
+    .replace(/^\||\|$/g, '')
+    .split('|')
+    .map((c) => c.trim());
+}
+
+const isTableSeparator = (line) => /^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/.test(line) && line.includes('-');
+const isTableRow = (line) => line.includes('|') && line.trim().length > 1;
+
+// Minimal block renderer: paragraphs, lists, and GFM-style tables.
 function Markdown({ text }) {
   const lines = text.split('\n');
   const blocks = [];
@@ -50,7 +62,49 @@ function Markdown({ text }) {
     }
   };
 
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Table: a header row immediately followed by a separator row.
+    if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      flush();
+      const header = splitRow(line);
+      const rows = [];
+      i += 2;
+      while (i < lines.length && isTableRow(lines[i]) && !isTableSeparator(lines[i])) {
+        rows.push(splitRow(lines[i]));
+        i++;
+      }
+      i--;
+      blocks.push(
+        <div key={`t-${blocks.length}`} className="my-1 overflow-x-auto rounded-lg border border-border">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/50">
+                {header.map((h, hi) => (
+                  <th key={hi} className="px-3 py-1.5 text-left font-semibold text-foreground">
+                    {renderInline(h)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri} className="border-b border-border/50 last:border-0">
+                  {row.map((cell, ci) => (
+                    <td key={ci} className="px-3 py-1.5 align-top text-muted-foreground">
+                      {renderInline(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      continue;
+    }
+
     const bullet = line.match(/^\s*(?:[-*]|\d+\.)\s+(.*)$/);
     if (bullet) {
       if (!list) list = [];

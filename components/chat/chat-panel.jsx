@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { Button } from '@bsuite/ui';
-import { Send, Bot, Sparkles } from 'lucide-react';
+import { Bot, Sparkles } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { ChatMessage } from './chat-message';
+import { ChatComposer } from './chat-composer';
 import { cn } from '../../lib/utils';
 
 const SUGGESTIONS = [
@@ -20,7 +20,6 @@ export function ChatPanel() {
   const { messages, sendMessage, status, error } = useChat({
     transport: new DefaultChatTransport({ api: '/api/chat' }),
   });
-  const [input, setInput] = useState('');
   const viewportRef = useRef(null);
 
   const busy = status === 'submitted' || status === 'streaming';
@@ -31,10 +30,9 @@ export function ChatPanel() {
   }, [messages, status]);
 
   function submit(text) {
-    const value = (text ?? input).trim();
+    const value = (text ?? '').trim();
     if (!value || busy) return;
     sendMessage({ text: value });
-    setInput('');
   }
 
   return (
@@ -47,7 +45,7 @@ export function ChatPanel() {
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-foreground">Helper Agent</h2>
           <p className="truncate text-xs text-muted-foreground">
-            Operates memory + kernel mesh · claude-sonnet-4.6
+            Operates memory + kernel mesh · grok-4.5
           </p>
         </div>
         <span className="ml-auto flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
@@ -96,31 +94,9 @@ export function ChatPanel() {
       </ScrollArea>
 
       {/* Composer */}
-      <form
-        className="flex items-end gap-2 border-t border-border bg-card px-4 py-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          rows={1}
-          placeholder="Message the helper agent…"
-          className="max-h-32 min-h-[42px] flex-1 resize-none rounded-xl border border-border bg-background px-3.5 py-2.5 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-primary/50 focus-visible:ring-2 focus-visible:ring-ring/30"
-        />
-        <Button type="submit" disabled={busy || !input.trim()} className="h-[42px] shrink-0 gap-1.5">
-          <Send className="size-4" aria-hidden="true" />
-          <span className="sr-only sm:not-sr-only">Send</span>
-        </Button>
-      </form>
+      <div className="border-t border-border bg-card">
+        <ChatComposer onSubmit={submit} busy={busy} />
+      </div>
     </div>
   );
 }

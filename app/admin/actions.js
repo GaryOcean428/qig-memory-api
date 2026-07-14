@@ -140,3 +140,53 @@ export async function runDailyReviewNowAction() {
     return { ok: false, error: err?.message || 'run_failed' };
   }
 }
+
+// --- Doctrine management (session-gated) --------------------------------------
+// The council and agents read doctrine from fixed memory keys, so uploading a
+// newer UCP / principles / council-prompt version through the UI takes effect
+// immediately — no redeploy. Only these three slots are writable here; general
+// record edits go through the memory browser.
+
+const DOCTRINE_KEYS = new Set(['qig_doctrine_ucp', 'qig_doctrine_principles', 'qig_doctrine_council']);
+
+export async function loadDoctrineAction() {
+  await requireSession();
+  const entries = await Promise.all(
+    [...DOCTRINE_KEYS].map(async (key) => {
+      const record = await getMemory(key);
+      if (!record) return [key, null];
+      const content = typeof record.content === 'string' ? record.content : JSON.stringify(record.content);
+      return [key, {
+        source: record.source || null,
+        updated: record.updated || null,
+        bytes: Buffer.byteLength(content, 'utf8'),
+        preview: content.slice(0, 400),
+      }];
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+export async function saveDoctrineAction(key, { content, versionNote } = {}) {
+  const session = await requireSession();
+  if (!DOCTRINE_KEYS.has(key)) return { ok: false, error: 'invalid_doctrine_key' };
+  const text = typeof content === 'string' ? content.trim() : '';
+  if (!text) return { ok: false, error: 'empty_content' };
+  const uploadedBy = session.user?.username || session.user?.email || session.user?.name || 'admin';
+  const note = String(versionNote || '').trim().slice(0, 300);
+  try {
+    const record = await putMemory(key, {
+      category: 'doctrine',
+      content: text,
+      source: `${note || 'updated via admin UI'} — uploaded by ${uploadedBy} ${new Date().toISOString().slice(0, 10)}`,
+      usefulness: 5,
+    });
+    return { ok: true, updated: record.updated, bytes: Buffer.byteLength(text, 'utf8') };
+  } catch (err) {
+    if (err instanceof ContentTooLargeError) {
+      return { ok: false, error: 'content_too_large', max_bytes: MAX_CONTENT_BYTES, got_bytes: err.bytes };
+    }
+    console.log('[v0] saveDoctrineAction error:', err?.message);
+    return { ok: false, error: 'save_failed' };
+  }
+}

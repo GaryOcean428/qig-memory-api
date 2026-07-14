@@ -20,7 +20,7 @@ async function validate(params) {
   const codeChallenge = params.get('code_challenge');
   const challengeMethod = params.get('code_challenge_method');
   const state = params.get('state');
-  const scope = params.get('scope') || 'mcp:tools';
+  const requestedScopes = (params.get('scope') || 'memory:read').split(/\s+/).filter(Boolean);
   const client = await getClient(clientId);
 
   if (!client || !redirectUri || !client.redirect_uris.includes(redirectUri)) {
@@ -29,11 +29,12 @@ async function validate(params) {
   if (responseType !== 'code' || !codeChallenge || challengeMethod !== 'S256') {
     return { response: oauthError(redirectUri, 'invalid_request', state, 'Authorization code + PKCE S256 is required.') };
   }
-  if (scope !== 'mcp:tools') {
-    return { response: oauthError(redirectUri, 'invalid_scope', state, 'Only the mcp:tools scope is supported.') };
+  const approvedScopes = new Set(client.approved_scopes || ['memory:read']);
+  if (!requestedScopes.length || requestedScopes.some((scope) => !approvedScopes.has(scope))) {
+    return { response: oauthError(redirectUri, 'invalid_scope', state, 'This client is not approved for one or more requested scopes.') };
   }
 
-  return { client, clientId, redirectUri, codeChallenge, state, scope };
+  return { client, clientId, redirectUri, codeChallenge, state, scope: requestedScopes.join(' ') };
 }
 
 export async function GET(request) {

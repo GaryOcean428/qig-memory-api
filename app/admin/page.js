@@ -4,10 +4,12 @@ import { LegalFooter } from '@/components/legal/legal-footer';
 import { MemoryBrowser } from '@/components/admin/memory-browser';
 import { KernelMeshViewer } from '@/components/admin/kernel-mesh-viewer';
 import { ApiKeysManager } from '@/components/admin/api-keys-manager';
+import { OAuthClientsManager } from '@/components/admin/oauth-clients-manager';
 import { AuthButton } from '@/components/auth/auth-button';
 import { getSession } from '@/lib/session';
 import { listMemory, listKernelAgents, syncKernel } from '@/lib/memory-store';
 import { listApiKeys } from '@/lib/api-keys';
+import { listOAuthClients } from '@/lib/mcp-oauth-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,10 +42,11 @@ export default async function AdminPage() {
   }
 
   // Authenticated: load initial data directly through the shared lib (server-side).
-  const [index, agentMap, apiKeys] = await Promise.all([
+  const [index, agentMap, apiKeys, oauthClients] = await Promise.all([
     listMemory({ keysOnly: true }),
     listKernelAgents(),
     listApiKeys(),
+    listOAuthClients(),
   ]);
   const keys = index.records
     .slice()
@@ -59,6 +62,7 @@ export default async function AdminPage() {
           <MemoryBrowser initialKeys={keys} keyCount={index.key_count ?? keys.length} />
           <KernelMeshViewer initialAgentIds={agentIds} initialMesh={initialMesh} />
           <ApiKeysManager initialKeys={apiKeys} />
+          <OAuthClientsManager initialClients={oauthClients} />
         </Suspense>
       </main>
       <LegalFooter />

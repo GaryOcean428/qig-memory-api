@@ -1,4 +1,5 @@
 import { createMcpHandler } from 'mcp-handler';
+import { z } from 'zod';
 import { toolDefs } from '../../../lib/qig-tools';
 import { auth, unauthorizedReason } from '../../../lib/auth.js';
 
@@ -14,7 +15,7 @@ const handler = createMcpHandler(
         name,
         {
           description: def.description,
-          inputSchema: def.schema,
+          inputSchema: z.object(def.schema),
         },
         async (args) => {
           try {

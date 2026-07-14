@@ -93,7 +93,7 @@ export async function PUT(req, { params }) {
       updated: body.updated || new Date().toISOString(),
       usefulness: body.usefulness !== undefined ? body.usefulness : (existing_data.usefulness || 0),
       retrieval_count: existing_data.retrieval_count || 0,
-      source: body.source || existing_data.source || null,
+      source: body.source ?? existing_data.source ?? null,
       last_retrieved: existing_data.last_retrieved || null,
       basin: body.basin || existing_data.basin || null,
     };

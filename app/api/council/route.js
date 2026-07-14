@@ -18,7 +18,8 @@ export async function GET(req) {
 }
 
 export async function POST(req) {
-  const authorization = await requireApiScope(req, 'memory:read');
+  // Convening writes (council_* ruling + inbox delivery), so it needs write scope.
+  const authorization = await requireApiScope(req, 'memory:write');
   if (authorization.error) return deniedResponse(authorization);
   try {
     const body = await req.json();

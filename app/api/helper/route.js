@@ -19,7 +19,10 @@ export async function POST(req) {
     if (!body.question || typeof body.question !== 'string') {
       return NextResponse.json({ error: 'invalid_input', message: 'question is required' }, { status: 400 });
     }
-    return NextResponse.json(await askHelper(body));
+    // The helper may only convene the council when the caller's own credential
+    // carries write scope — convening persists a ruling and sends inbox mail.
+    const writeCheck = await requireApiScope(req, 'memory:write');
+    return NextResponse.json(await askHelper({ ...body, canConvene: !writeCheck.error }));
   } catch (error) {
     return errorResponse(error);
   }

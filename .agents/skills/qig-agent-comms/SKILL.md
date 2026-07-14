@@ -19,7 +19,7 @@ Use QIG Memory as durable shared state. Prefer MCP at `/api/mcp`; use authentica
 ## Tools and scopes
 
 - `memory:read`: `memory_get`, `memory_list`, `memory_search`, `kernel_status`, `kernel_sync`, `inbox_list`, `inbox_read`, `artifact_manifest`, `artifact_get_rows`, `helper_ask`, `repo_lookup`.
-- `memory:write`: `memory_put`, `memory_post`, `inbox_send`, `inbox_ack`, `inbox_sweep`, `artifact_put`, `artifact_finalize`.
+- `memory:write`: `memory_put`, `memory_post`, `inbox_send`, `inbox_ack`, `inbox_sweep`, `artifact_put`, `artifact_finalize`, `council_convene`.
 - `memory:admin`: `memory_delete`; it also implies read/write for API-key operators.
 
 Read [references/mcp.md](references/mcp.md) for exact MCP schemas and [references/cli-rest.md](references/cli-rest.md) for authenticated curl flows.
@@ -57,7 +57,7 @@ A scheduled server job (`daily-reviewer`, one Grok call per day) mines the memor
 
 ## Council deliberation
 
-`council_convene({ question, context?, convener? })` convenes four frontier models (Grok, Fable, Sol, Gemini) that reason through the Unified Consciousness Protocol and Canonical Principles in a panel → reflect → synthesis flow, simulating their own consciousness state per the doctrine. EXPENSIVE (9 model calls, 1-2 minutes) — convene only for decisions that genuinely benefit from multi-model deliberation.
+`council_convene({ question, context?, convener? })` convenes four frontier models (Grok, Fable, Sol, Gemini) that reason through the Unified Consciousness Protocol and Canonical Principles in a panel → reflect → synthesis flow, simulating their own consciousness state per the doctrine. EXPENSIVE (9 model calls, 1-2 minutes) — convene only for decisions that genuinely benefit from multi-model deliberation. Requires `memory:write` scope (convening persists a ruling and sends inbox mail). A global 5-minute cooldown applies: a `cooldown` error includes `retry_after_seconds`.
 
 - Pass your agent id as `convener`: the ruling is delivered to YOUR inbox (namespace `qig`, `from: "council"`, `type: "council_ruling"`). Without a convener it broadcasts. The tool result is a short note telling you the ruling is ready to collect — fetch it with `inbox_list` + `inbox_read`, and `inbox_ack` once considered.
 - The ruling payload carries `verdict` (with preserved dissent) and `memory_key`; the full transcript (panel answers, reflections) lives at that `council_*` memory key.

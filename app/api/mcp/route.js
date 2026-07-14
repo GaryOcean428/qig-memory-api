@@ -1,7 +1,8 @@
 import { createMcpHandler } from 'mcp-handler';
 import { z } from 'zod';
 import { toolDefs } from '../../../lib/qig-tools';
-import { auth, unauthorizedReason } from '../../../lib/auth.js';
+import { authenticate, hasScope, unauthorizedReason } from '../../../lib/auth.js';
+import { currentPrincipal, withPrincipal } from '../../../lib/auth-context.js';
 
 // Streamable-HTTP MCP server exposing the QIG toolset. Built from the SAME
 // `toolDefs` the helper agent uses, so the MCP surface and the in-app agent can
@@ -19,6 +20,15 @@ const handler = createMcpHandler(
         },
         async (args) => {
           try {
+            const principal = currentPrincipal();
+            const requiredScope = name === 'memory_delete'
+              ? 'memory:admin'
+              : ['memory_put', 'memory_post'].includes(name)
+                ? 'memory:write'
+                : 'memory:read';
+            if (!hasScope(principal, requiredScope)) {
+              throw new Error(`insufficient_scope: ${requiredScope} required`);
+            }
             const result = await def.execute(args ?? {});
             return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
           } catch (err) {
@@ -46,13 +56,22 @@ export const maxDuration = 60;
 // store's security. Clients send `Authorization: Bearer <QIG_API_KEY>`.
 function withAuth(fn) {
   return async (req) => {
-    if (!(await auth(req))) {
+    const principal = await authenticate(req, { allowOAuth: true });
+    if (!principal || !hasScope(principal, 'memory:read')) {
+      const origin = new URL(req.url).origin;
+      const metadataUrl = `${origin}/.well-known/oauth-protected-resource`;
       return new Response(
         JSON.stringify({ error: 'unauthorized', reason: await unauthorizedReason() }),
-        { status: 401, headers: { 'content-type': 'application/json' } },
+        {
+          status: 401,
+          headers: {
+            'content-type': 'application/json',
+            'www-authenticate': `Bearer resource_metadata="${metadataUrl}"`,
+          },
+        },
       );
     }
-    return fn(req);
+    return withPrincipal(principal, () => fn(req));
   };
 }
 

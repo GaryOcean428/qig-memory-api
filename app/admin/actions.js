@@ -14,6 +14,7 @@ import {
   MAX_CONTENT_BYTES,
 } from '../../lib/memory-store';
 import { listApiKeys, createApiKey, revokeApiKey } from '../../lib/api-keys';
+import { listOAuthClients, setClientAccess } from '../../lib/mcp-oauth-store';
 
 // Every action authenticates via the OAuth session before touching the store.
 // These run server-side, so they use the shared lib directly — no public REST
@@ -92,4 +93,15 @@ export async function revokeApiKeyAction(id) {
   await requireSession();
   const revoked = await revokeApiKey(id);
   return { revoked, id };
+}
+
+export async function listOAuthClientsAction() {
+  await requireSession();
+  return listOAuthClients();
+}
+
+export async function setOAuthClientAccessAction(clientId, mode) {
+  const session = await requireSession();
+  const approvedBy = session.user?.username || session.user?.email || session.user?.name || null;
+  return setClientAccess(clientId, mode, approvedBy);
 }

@@ -19,6 +19,11 @@ import {
   createApiKeyAction,
   revokeApiKeyAction,
 } from '@/app/admin/actions';
+import {
+  forgetBrowserApiKey,
+  readBrowserApiKey,
+  rememberBrowserApiKey,
+} from '@/lib/browser-api-key';
 
 const inputClass =
   'h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -38,6 +43,7 @@ export function ApiKeysManager({ initialKeys }) {
   const [newToken, setNewToken] = useState(null); // plaintext, shown once
   const [revoking, setRevoking] = useState(null); // key pending confirmation
   const [error, setError] = useState(null);
+  const [rememberOnDevice, setRememberOnDevice] = useState(false);
   const [isCreating, startCreate] = useTransition();
   const [isRevoking, startRevoke] = useTransition();
 
@@ -48,6 +54,7 @@ export function ApiKeysManager({ initialKeys }) {
       if (res?.token) {
         setNewToken(res.token);
         setKeys((prev) => [res.key, ...prev]);
+        if (rememberOnDevice) rememberBrowserApiKey(res.token, res.key);
         setLabel('');
       } else {
         setError('Could not create key. Please try again.');
@@ -62,6 +69,7 @@ export function ApiKeysManager({ initialKeys }) {
       const res = await revokeApiKeyAction(id);
       if (res.revoked) {
         setKeys((prev) => prev.filter((k) => k.id !== id));
+        if (readBrowserApiKey()?.id === id) forgetBrowserApiKey();
         setRevoking(null);
       } else {
         setError('Could not revoke key. Please try again.');
@@ -71,32 +79,46 @@ export function ApiKeysManager({ initialKeys }) {
   }
 
   return (
-    <section className="mt-14">
+    <section id="api-keys" className="mt-14 scroll-mt-24">
       <div className="flex items-center gap-2">
         <KeyRound className="h-5 w-5 text-muted-foreground" />
         <h2 className="text-xl font-semibold tracking-tight text-foreground">API keys</h2>
       </div>
       <p className="mt-1.5 text-pretty text-sm leading-relaxed text-muted-foreground">
-        Bearer tokens for the REST API and MCP endpoint. Tokens are shown once at creation and
-        stored only as a hash — copy yours immediately. Revoking a key takes effect instantly.
+        Bearer tokens for the REST API and MCP endpoint. The server stores only a hash. You can
+        optionally remember a generated token on this device for connector commands. Revoking a key takes effect instantly.
       </p>
 
       {/* Create */}
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <input
-          className={inputClass}
-          placeholder="Key label (e.g. hermes-local, ci-pipeline)"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) create();
-          }}
-          aria-label="New key label"
-        />
-        <Button type="button" onClick={create} disabled={isCreating} className="shrink-0 gap-2">
-          {isCreating ? <LoadingSpinner size="sm" /> : <Plus className="h-4 w-4" />}
-          <span>Generate key</span>
-        </Button>
+      <div className="mt-5 flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            className={inputClass}
+            placeholder="Key label (e.g. hermes-local, ci-pipeline)"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) create();
+            }}
+            aria-label="New key label"
+          />
+          <Button type="button" onClick={create} disabled={isCreating} className="shrink-0 gap-2">
+            {isCreating ? <LoadingSpinner size="sm" /> : <Plus className="h-4 w-4" />}
+            <span>Generate key</span>
+          </Button>
+        </div>
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
+          <input
+            type="checkbox"
+            checked={rememberOnDevice}
+            onChange={(event) => setRememberOnDevice(event.target.checked)}
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span className="text-xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground">Remember this key on this device.</span>{' '}
+            Stores the plaintext token in browser local storage so connector commands can include it. Do not enable this on a shared or public computer.
+          </span>
+        </label>
       </div>
 
       {error && (
@@ -158,8 +180,9 @@ export function ApiKeysManager({ initialKeys }) {
               Copy your new API key
             </DialogTitle>
             <DialogDescription>
-              This is the only time the full token is shown. Store it somewhere safe — you can
-              always revoke it and generate a new one.
+              {rememberOnDevice
+                ? 'The server will not show this token again. It is remembered on this device so Connect via MCP commands can include it automatically.'
+                : 'The server will not show this token again, and it is not stored in this browser. Copy it now and keep it somewhere secure.'}
             </DialogDescription>
           </DialogHeader>
 

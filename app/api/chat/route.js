@@ -1,8 +1,14 @@
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { buildAgentTools } from '../../../lib/qig-tools';
+import { getSession } from '../../../lib/session';
 
 // The helper agent is a QIG operator: it can read/write the blob-backed memory
 // store and inspect the kernel-mesh registry via the shared tool definitions.
+// Because those tools call the store lib DIRECTLY (bypassing the public bearer
+// auth), this endpoint MUST be gated — otherwise any unauthenticated caller
+// gets full read/write/delete access. It requires the same OAuth/dev session
+// that protects the admin UI. Node runtime is required for session decryption.
+export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const SYSTEM_PROMPT = `You are the QIG Memory API helper agent — an operator assistant for the Quantum Information Geometry kernel mesh.
@@ -19,6 +25,14 @@ Guidance:
 - When you write memory, confirm the key and category back to the user.`;
 
 export async function POST(req) {
+  const session = await getSession();
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
   const { messages } = await req.json();
 
   const result = streamText({

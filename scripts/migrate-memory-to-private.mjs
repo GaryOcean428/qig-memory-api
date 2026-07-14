@@ -2,14 +2,14 @@ import { createHash } from 'node:crypto';
 import { del, get, list, put } from '@vercel/blob';
 
 const sourceToken = process.env.SOURCE_BLOB_READ_WRITE_TOKEN;
-const destinationToken = process.env.MEMORY_BLOB_READ_WRITE_TOKEN;
+const destinationToken = process.env.BLOB_READ_WRITE_TOKEN_2 || process.env.MEMORY_BLOB_READ_WRITE_TOKEN;
 const apply = process.argv.includes('--apply');
 const cleanup = process.argv.includes('--cleanup');
 const prefix = 'memory/';
 const concurrency = Math.min(Math.max(Number(process.env.MIGRATION_CONCURRENCY) || 8, 1), 32);
 
 if (!sourceToken || !destinationToken) {
-  throw new Error('SOURCE_BLOB_READ_WRITE_TOKEN and MEMORY_BLOB_READ_WRITE_TOKEN are required');
+  throw new Error('SOURCE_BLOB_READ_WRITE_TOKEN and a private destination binding (BLOB_READ_WRITE_TOKEN_2 or MEMORY_BLOB_READ_WRITE_TOKEN) are required');
 }
 if (sourceToken === destinationToken) {
   throw new Error('Source and destination credentials must target separate stores');

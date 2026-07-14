@@ -19,6 +19,11 @@ import {
   createApiKeyAction,
   revokeApiKeyAction,
 } from '@/app/admin/actions';
+import {
+  forgetBrowserApiKey,
+  readBrowserApiKey,
+  rememberBrowserApiKey,
+} from '@/lib/browser-api-key';
 
 const inputClass =
   'h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -48,6 +53,7 @@ export function ApiKeysManager({ initialKeys }) {
       if (res?.token) {
         setNewToken(res.token);
         setKeys((prev) => [res.key, ...prev]);
+        rememberBrowserApiKey(res.token, res.key);
         setLabel('');
       } else {
         setError('Could not create key. Please try again.');
@@ -62,6 +68,7 @@ export function ApiKeysManager({ initialKeys }) {
       const res = await revokeApiKeyAction(id);
       if (res.revoked) {
         setKeys((prev) => prev.filter((k) => k.id !== id));
+        if (readBrowserApiKey()?.id === id) forgetBrowserApiKey();
         setRevoking(null);
       } else {
         setError('Could not revoke key. Please try again.');
@@ -71,14 +78,14 @@ export function ApiKeysManager({ initialKeys }) {
   }
 
   return (
-    <section className="mt-14">
+    <section id="api-keys" className="mt-14 scroll-mt-24">
       <div className="flex items-center gap-2">
         <KeyRound className="h-5 w-5 text-muted-foreground" />
         <h2 className="text-xl font-semibold tracking-tight text-foreground">API keys</h2>
       </div>
       <p className="mt-1.5 text-pretty text-sm leading-relaxed text-muted-foreground">
-        Bearer tokens for the REST API and MCP endpoint. Tokens are shown once at creation and
-        stored only as a hash — copy yours immediately. Revoking a key takes effect instantly.
+        Bearer tokens for the REST API and MCP endpoint. The server stores only a hash; your latest
+        generated token is remembered in this browser so connector commands can include it. Revoking a key takes effect instantly.
       </p>
 
       {/* Create */}
@@ -158,8 +165,8 @@ export function ApiKeysManager({ initialKeys }) {
               Copy your new API key
             </DialogTitle>
             <DialogDescription>
-              This is the only time the full token is shown. Store it somewhere safe — you can
-              always revoke it and generate a new one.
+              The server will not show this token again. It has been remembered in this browser so
+              the Connect via MCP commands can include it automatically.
             </DialogDescription>
           </DialogHeader>
 

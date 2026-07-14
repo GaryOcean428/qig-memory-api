@@ -46,10 +46,18 @@ export const maxDuration = 60;
 // store's security. Clients send `Authorization: Bearer <QIG_API_KEY>`.
 function withAuth(fn) {
   return async (req) => {
-    if (!(await auth(req))) {
+    if (!(await auth(req, { allowOAuth: true }))) {
+      const origin = new URL(req.url).origin;
+      const metadataUrl = `${origin}/.well-known/oauth-protected-resource`;
       return new Response(
         JSON.stringify({ error: 'unauthorized', reason: await unauthorizedReason() }),
-        { status: 401, headers: { 'content-type': 'application/json' } },
+        {
+          status: 401,
+          headers: {
+            'content-type': 'application/json',
+            'www-authenticate': `Bearer resource_metadata="${metadataUrl}"`,
+          },
+        },
       );
     }
     return fn(req);

@@ -17,6 +17,8 @@ import { listApiKeys, createApiKey, revokeApiKey } from '../../lib/api-keys';
 import { listOAuthClients, setClientAccess } from '../../lib/mcp-oauth-store';
 import { getReviewerConfig, saveReviewerConfig, getLatestReport } from '../../lib/reviewer-config';
 import { runDailyReview } from '../../lib/daily-reviewer';
+import { createTask, deleteTask, listTasks, updateTask, withDerived } from '../../lib/task-store';
+import { runTaskNow } from '../../lib/task-runner';
 
 // Every action authenticates via the OAuth session before touching the store.
 // These run server-side, so they use the shared lib directly — no public REST
@@ -141,12 +143,62 @@ export async function runDailyReviewNowAction() {
   }
 }
 
-// --- Doctrine management (session-gated) --------------------------------------
-// The council and agents read doctrine from fixed memory keys, so uploading a
-// newer UCP / principles / council-prompt version through the UI takes effect
-// immediately — no redeploy. Only these three slots are writable here; general
-// record edits go through the memory browser.
+// --- Scheduled tasks (session-gated) -----------------------------------------
+// The chat task panel and the admin task board both read/write through these.
+// Creation attributes the task to the signed-in operator so the runner delivers
+// results to their inbox. "Run now" reuses the same executor the cron uses.
 
+function actor(session) {
+  return session.user?.username || session.user?.email || session.user?.name || 'operator';
+}
+
+export async function listTasksAction() {
+  await requireSession();
+  const tasks = await listTasks();
+  return tasks.map((t) => withDerived(t));
+}
+
+export async function createTaskAction(input) {
+  const session = await requireSession();
+  try {
+    const task = await createTask(input, { createdBy: actor(session) });
+    return { ok: true, task: withDerived(task) };
+  } catch (err) {
+    if (err?.name === 'ZodError') return { ok: false, error: 'invalid_task', issues: err.issues };
+    console.log('[v0] createTaskAction error:', err?.message);
+    return { ok: false, error: 'create_failed' };
+  }
+}
+
+export async function updateTaskAction(id, patch) {
+  await requireSession();
+  try {
+    const task = await updateTask(id, patch);
+    return task ? { ok: true, task: withDerived(task) } : { ok: false, error: 'not_found' };
+  } catch (err) {
+    if (err?.name === 'ZodError') return { ok: false, error: 'invalid_patch', issues: err.issues };
+    console.log('[v0] updateTaskAction error:', err?.message);
+    return { ok: false, error: 'update_failed' };
+  }
+}
+
+export async function deleteTaskAction(id) {
+  await requireSession();
+  await deleteTask(id);
+  return { ok: true, id };
+}
+
+export async function runTaskNowAction(id) {
+  await requireSession();
+  try {
+    return await runTaskNow(id);
+  } catch (err) {
+    console.log('[v0] runTaskNowAction error:', err?.message);
+    return { ok: false, error: err?.message || 'run_failed' };
+  }
+}
+
+// --- Doctrine management (session-gated) --------------------------------------
 const DOCTRINE_KEYS = new Set(['qig_doctrine_ucp', 'qig_doctrine_principles', 'qig_doctrine_council']);
 
 export async function loadDoctrineAction() {

@@ -85,7 +85,7 @@ export function ChatWorkspace() {
           </button>
         </div>
         <div className="min-h-0 flex-1">
-          <ChatTaskPanel />
+          <ChatTaskPanel active={tasksOpen} />
         </div>
       </aside>
     </div>

@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
-import { authorize, authenticate, unauthorizedReason } from '../../../lib/auth.js';
+import { authorizeDetailed } from '../../../lib/auth.js';
 import { createTask, listTasks, withDerived } from '../../../lib/task-store.js';
 
 export const maxDuration = 60;
 
+// Distinguishes unauthenticated (401) from authenticated-but-wrong-scope (403).
+function denied(auth) {
+  return NextResponse.json({ error: auth.error }, { status: auth.status });
+}
+
 // GET /api/tasks — list all scheduled tasks (read scope).
 export async function GET(req) {
-  if (!(await authorize(req, 'memory:read', { allowOAuth: true }))) {
-    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
-  }
+  const auth = await authorizeDetailed(req, 'memory:read', { allowOAuth: true });
+  if (auth.error) return denied(auth);
   try {
     const tasks = await listTasks();
     return NextResponse.json({ count: tasks.length, tasks: tasks.map((t) => withDerived(t)) });
@@ -19,10 +23,9 @@ export async function GET(req) {
 
 // POST /api/tasks — create a task (write scope). Body is the task input shape.
 export async function POST(req) {
-  const principal = await authenticate(req, { allowOAuth: true });
-  if (!(await authorize(req, 'memory:write', { allowOAuth: true }))) {
-    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
-  }
+  const auth = await authorizeDetailed(req, 'memory:write', { allowOAuth: true });
+  if (auth.error) return denied(auth);
+  const principal = auth.principal;
   let body;
   try {
     body = await req.json();

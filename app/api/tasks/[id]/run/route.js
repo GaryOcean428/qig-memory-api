@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorize, unauthorizedReason } from '../../../../../lib/auth.js';
+import { authorizeDetailed } from '../../../../../lib/auth.js';
 import { runTaskNow } from '../../../../../lib/task-runner.js';
 
 // Manual "run now" — executes a task immediately regardless of its schedule.
@@ -8,9 +8,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 export async function POST(req, { params }) {
-  if (!(await authorize(req, 'memory:write', { allowOAuth: true }))) {
-    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
-  }
+  const auth = await authorizeDetailed(req, 'memory:write', { allowOAuth: true });
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const { id } = await params;
   try {
     const result = await runTaskNow(id);

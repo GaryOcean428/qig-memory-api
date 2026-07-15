@@ -7,7 +7,9 @@ import { ApiKeysManager } from '@/components/admin/api-keys-manager';
 import { OAuthClientsManager } from '@/components/admin/oauth-clients-manager';
 import { DailyReviewerManager } from '@/components/admin/daily-reviewer-manager';
 import { DoctrineManager } from '@/components/admin/doctrine-manager';
+import { TaskManager } from '@/components/admin/task-manager';
 import { loadDoctrineAction } from '@/app/admin/actions';
+import { listTasks, withDerived } from '@/lib/task-store';
 import { AuthButton } from '@/components/auth/auth-button';
 import { getSession } from '@/lib/session';
 import { listMemory, listKernelAgents, syncKernel } from '@/lib/memory-store';
@@ -46,15 +48,18 @@ export default async function AdminPage() {
   }
 
   // Authenticated: load initial data directly through the shared lib (server-side).
-  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine] = await Promise.all([
-    listMemory({ keysOnly: true }),
-    listKernelAgents(),
-    listApiKeys(),
-    listOAuthClients(),
-    getReviewerConfig(),
-    getLatestReport(),
-    loadDoctrineAction(),
-  ]);
+  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine, tasks] =
+    await Promise.all([
+      listMemory({ keysOnly: true }),
+      listKernelAgents(),
+      listApiKeys(),
+      listOAuthClients(),
+      getReviewerConfig(),
+      getLatestReport(),
+      loadDoctrineAction(),
+      listTasks(),
+    ]);
+  const initialTasks = tasks.map((t) => withDerived(t));
   const keys = index.records
     .slice()
     .sort((a, b) => String(b.uploaded_at).localeCompare(String(a.uploaded_at)));
@@ -71,6 +76,7 @@ export default async function AdminPage() {
           <ApiKeysManager initialKeys={apiKeys} />
           <OAuthClientsManager initialClients={oauthClients} />
           <DailyReviewerManager initialConfig={reviewerConfig} initialReport={reviewerReport} />
+          <TaskManager initialTasks={initialTasks} />
           <DoctrineManager initialDoctrine={doctrine} />
         </Suspense>
       </main>

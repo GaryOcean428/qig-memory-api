@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { PanelLeft, Sparkles } from 'lucide-react';
+import { PanelLeft, Sparkles, ListTodo } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { ChatMessage } from './chat-message';
 import { ChatComposer } from './chat-composer';
@@ -17,7 +17,14 @@ const SUGGESTIONS = [
   '/council Is the current memory pruning policy sound?',
 ];
 
-export function ChatPanel({ conversationId, initialMessages = [], onMessagesChange, onOpenSidebar }) {
+export function ChatPanel({
+  conversationId,
+  initialMessages = [],
+  onMessagesChange,
+  onOpenSidebar,
+  onToggleTasks,
+  tasksOpen = false,
+}) {
   const { messages, sendMessage, status, error } = useChat({
     id: conversationId,
     messages: initialMessages,
@@ -68,6 +75,24 @@ export function ChatPanel({ conversationId, initialMessages = [], onMessagesChan
           <span className={cn('size-1.5 rounded-full', busy ? 'bg-primary animate-pulse' : 'bg-primary/60')} />
           {busy ? 'Working' : 'Ready'}
         </span>
+        {onToggleTasks ? (
+          <button
+            type="button"
+            onClick={onToggleTasks}
+            aria-label="Toggle tasks panel"
+            aria-pressed={tasksOpen}
+            title="Tasks"
+            className={cn(
+              'flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
+              tasksOpen
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-border text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <ListTodo className="size-3.5" aria-hidden="true" />
+            <span className="hidden sm:inline">Tasks</span>
+          </button>
+        ) : null}
       </div>
 
       {/* Messages */}

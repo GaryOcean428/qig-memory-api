@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
-import { authorize, unauthorizedReason } from '../../../../lib/auth.js';
+import { authorizeDetailed } from '../../../../lib/auth.js';
 import { deleteTask, getTask, updateTask, withDerived } from '../../../../lib/task-store.js';
 
 export const maxDuration = 60;
 
+// Distinguishes unauthenticated (401) from authenticated-but-wrong-scope (403).
+function denied(auth) {
+  return NextResponse.json({ error: auth.error }, { status: auth.status });
+}
+
 // GET /api/tasks/:id — read a single task (read scope).
 export async function GET(req, { params }) {
-  if (!(await authorize(req, 'memory:read', { allowOAuth: true }))) {
-    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
-  }
+  const auth = await authorizeDetailed(req, 'memory:read', { allowOAuth: true });
+  if (auth.error) return denied(auth);
   const { id } = await params;
   const task = await getTask(id);
   if (!task) return NextResponse.json({ error: 'not_found', id }, { status: 404 });
@@ -17,9 +21,8 @@ export async function GET(req, { params }) {
 
 // PATCH /api/tasks/:id — update a task (write scope).
 export async function PATCH(req, { params }) {
-  if (!(await authorize(req, 'memory:write', { allowOAuth: true }))) {
-    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
-  }
+  const auth = await authorizeDetailed(req, 'memory:write', { allowOAuth: true });
+  if (auth.error) return denied(auth);
   const { id } = await params;
   let body;
   try {
@@ -41,9 +44,8 @@ export async function PATCH(req, { params }) {
 
 // DELETE /api/tasks/:id — remove a task (write scope).
 export async function DELETE(req, { params }) {
-  if (!(await authorize(req, 'memory:write', { allowOAuth: true }))) {
-    return NextResponse.json({ error: 'unauthorized', reason: await unauthorizedReason() }, { status: 401 });
-  }
+  const auth = await authorizeDetailed(req, 'memory:write', { allowOAuth: true });
+  if (auth.error) return denied(auth);
   const { id } = await params;
   const existing = await getTask(id);
   if (!existing) return NextResponse.json({ error: 'not_found', id }, { status: 404 });

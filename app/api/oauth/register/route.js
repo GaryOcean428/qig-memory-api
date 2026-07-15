@@ -4,6 +4,7 @@ import {
   findClientByFingerprint,
   isSafeRedirectUri,
   registerClient,
+  toRegistrationResponse,
 } from '../../../../lib/mcp-oauth-store';
 
 export const runtime = 'nodejs';
@@ -34,7 +35,10 @@ export async function POST(request) {
   // rate-limit slots or proliferate duplicate clients.
   const existing = await findClientByFingerprint({ redirectUris, clientName: body.client_name });
   if (existing) {
-    return NextResponse.json(existing, { status: 200, headers: { 'cache-control': 'no-store' } });
+    return NextResponse.json(toRegistrationResponse(existing), {
+      status: 200,
+      headers: { 'cache-control': 'no-store' },
+    });
   }
 
   // Only genuinely new clients are rate-limited (per IP, per hour).
@@ -45,7 +49,7 @@ export async function POST(request) {
   }
 
   const client = await registerClient({ redirectUris, clientName: body.client_name });
-  return NextResponse.json(client, {
+  return NextResponse.json(toRegistrationResponse(client), {
     status: 201,
     headers: { 'cache-control': 'no-store' },
   });

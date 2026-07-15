@@ -10,6 +10,7 @@ import {
   SORT_OPTIONS,
   groupTasks,
   sortTasks,
+  taskToForm,
   STATUS_ORDER,
 } from '../../lib/task-ui';
 
@@ -199,9 +200,10 @@ export function TaskBoard({
 
       {showForm ? (
         <TaskForm
-          initialTask={editing}
+          initialForm={editing ? taskToForm(editing) : undefined}
+          editing={Boolean(editing)}
           onSubmit={handleSubmit}
-          onCancel={() => {
+          onClose={() => {
             setShowForm(false);
             setEditing(null);
           }}

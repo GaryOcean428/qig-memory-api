@@ -174,12 +174,12 @@ export function TaskBoard({
                 <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {group.label}
                   <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-normal">
-                    {group.tasks.length}
+                    {group.items.length}
                   </span>
                 </h3>
               ) : null}
               <div className="flex flex-col gap-2">
-                {group.tasks.map((task) => (
+                {group.items.map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}

@@ -70,11 +70,14 @@ export async function POST(req) {
 
   const { messages } = await req.json();
 
+  // Attribute tasks/writes to the signed-in operator, not the generic 'agent'.
+  const principal = session.user?.username || session.user?.email || session.user?.name || 'operator';
+
   const result = streamText({
     model: 'xai/grok-4.5',
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(expandSlashCommands(messages)),
-    tools: buildAgentTools(),
+    tools: buildAgentTools({ principal }),
     stopWhen: stepCountIs(10),
   });
 

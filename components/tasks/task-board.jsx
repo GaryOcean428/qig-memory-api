@@ -39,6 +39,9 @@ export function TaskBoard({
   const [statusFilter, setStatusFilter] = useState('active');
   const [groupBy, setGroupBy] = useState('project');
   const [sortBy, setSortBy] = useState('priority');
+  // Id of the task with an in-flight run/delete/cancel/reactivate call, so its
+  // card buttons stay disabled and rapid double-clicks can't fire duplicates.
+  const [busyId, setBusyId] = useState(null);
 
   const visible = useMemo(() => {
     let list = tasks;
@@ -70,6 +73,15 @@ export function TaskBoard({
   function startEdit(task) {
     setEditing(task);
     setShowForm(true);
+  }
+
+  async function runAction(id, action) {
+    setBusyId(id);
+    try {
+      return await action();
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -185,11 +197,12 @@ export function TaskBoard({
                     key={task.id}
                     task={task}
                     compact={compact}
+                    busy={busyId === task.id}
                     onEdit={() => startEdit(task)}
-                    onDelete={() => onDelete(task.id)}
-                    onRun={() => onRun(task.id)}
-                    onCancel={() => onUpdate(task.id, { status: 'cancelled' })}
-                    onReactivate={() => onUpdate(task.id, { status: 'scheduled' })}
+                    onDelete={() => runAction(task.id, () => onDelete(task.id))}
+                    onRun={() => runAction(task.id, () => onRun(task.id))}
+                    onCancel={() => runAction(task.id, () => onUpdate(task.id, { status: 'cancelled' }))}
+                    onReactivate={() => runAction(task.id, () => onUpdate(task.id, { status: 'scheduled' }))}
                   />
                 ))}
               </div>

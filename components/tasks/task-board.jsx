@@ -37,7 +37,7 @@ export function TaskBoard({
   const [editing, setEditing] = useState(null);
   const [statusFilter, setStatusFilter] = useState('active');
   const [groupBy, setGroupBy] = useState('project');
-  const [sortBy, setSortBy] = useState('smart');
+  const [sortBy, setSortBy] = useState('priority');
 
   const visible = useMemo(() => {
     let list = tasks;

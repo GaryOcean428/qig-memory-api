@@ -98,7 +98,12 @@ function ActionButton({ label, onClick, icon: Icon, active, disabled }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        // Guard at the handler level so a disabled action never fires, even if
+        // the native `disabled` attribute is bypassed by future markup changes.
+        if (disabled) return;
+        onClick?.(event);
+      }}
       disabled={disabled}
       aria-label={label}
       title={label}

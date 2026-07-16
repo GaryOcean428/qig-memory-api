@@ -2,3 +2,8 @@ node_modules
 .next
 .vercel
 .env*
+.qwen/
+.claude/settings.local.json
+*.log
+*.tmp.mjs
+.DS_Store

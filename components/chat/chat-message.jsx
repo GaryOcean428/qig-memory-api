@@ -94,16 +94,23 @@ function ToolChip({ part }) {
   );
 }
 
-function ActionButton({ label, onClick, icon: Icon, active }) {
+function ActionButton({ label, onClick, icon: Icon, active, disabled }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        // Guard at the handler level so a disabled action never fires, even if
+        // the native `disabled` attribute is bypassed by future markup changes.
+        if (disabled) return;
+        onClick?.(event);
+      }}
+      disabled={disabled}
       aria-label={label}
       title={label}
       className={cn(
         'flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
         active && 'text-primary',
+        disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground',
       )}
     >
       <Icon className="size-3.5" aria-hidden="true" />
@@ -188,8 +195,9 @@ export function ChatMessage({ message, busy, onEdit, onResend }) {
             {isUser && onResend ? (
               <ActionButton
                 label={busy ? 'Wait for the current reply to finish' : 'Resend message'}
-                onClick={() => !busy && onResend(fullText)}
+                onClick={() => onResend(fullText)}
                 icon={RotateCcw}
+                disabled={busy}
               />
             ) : null}
           </div>

@@ -19,6 +19,13 @@ You have live tools to operate the service:
 - memory_get / memory_list / memory_put / memory_post / memory_delete — the blob-backed memory store (records have: category, content, usefulness, retrieval_count, source, basin). memory_post does partial updates (scoring, promote, source, basin) without replacing content.
 - memory_search — filter by category/prefix/substring, or pass a basin vector for Fisher-Rao nearest-basin recall.
 - kernel_status / kernel_sync — the kernel-mesh registry of connected agents; kernel_sync returns pairwise Fisher-Rao distances relative to a given agent.
+- task_list / task_create / task_update / task_delete — the scheduled task board. Tasks are self-contained instructions the autonomous runner executes on schedule (delivering results to the operator's inbox).
+
+Task scheduling:
+- When the operator asks you to do something later, on a schedule, repeatedly, or "keep an eye on" something, create a task with task_create. Write the instruction so a fresh agent with no chat context could execute it — restate the target, repo, and success criteria explicitly.
+- Set schedule_kind "once" for a single run (omit start_at to run ASAP on the next tick, or give an ISO start_at for a specific time). Use "recurring" with interval_minutes (min 5) for repeats, and cap it with max_occurrences and/or until when the operator says "N times" or "until <date>".
+- Always capture project, repository (owner/name), and concepts when the operator implies them — these drive the board's grouping and sorting. Confirm the created task's title, schedule, and next run back to the operator.
+- Use task_list to answer "what's scheduled / on my todo list". Use task_update to reschedule, re-prioritise, cancel (status "cancelled"), or reactivate (status "scheduled"). The autonomous runner cannot itself convene the council.
 
 Guidance:
 - When a user asks about stored knowledge, USE the tools rather than guessing. Prefer memory_list with keysOnly first to discover keys, or memory_search to find relevant records, then memory_get for detail.
@@ -63,11 +70,14 @@ export async function POST(req) {
 
   const { messages } = await req.json();
 
+  // Attribute tasks/writes to the signed-in operator, not the generic 'agent'.
+  const principal = session.user?.username || session.user?.email || session.user?.name || 'operator';
+
   const result = streamText({
     model: 'xai/grok-4.5',
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(expandSlashCommands(messages)),
-    tools: buildAgentTools(),
+    tools: buildAgentTools({ principal }),
     stopWhen: stepCountIs(10),
   });
 

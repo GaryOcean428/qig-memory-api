@@ -8,6 +8,7 @@ import { OAuthClientsManager } from '@/components/admin/oauth-clients-manager';
 import { DailyReviewerManager } from '@/components/admin/daily-reviewer-manager';
 import { DoctrineManager } from '@/components/admin/doctrine-manager';
 import { TaskManager } from '@/components/admin/task-manager';
+import { FrozenFactsDashboard } from '@/components/admin/frozen-facts-dashboard';
 import { loadDoctrineAction } from '@/app/admin/actions';
 import { listTasks, withDerived } from '@/lib/task-store';
 import { AuthButton } from '@/components/auth/auth-button';
@@ -16,6 +17,7 @@ import { listMemory, listKernelAgents, syncKernel } from '@/lib/memory-store';
 import { listApiKeys } from '@/lib/api-keys';
 import { listOAuthClients } from '@/lib/mcp-oauth-store';
 import { getReviewerConfig, getLatestReport } from '@/lib/reviewer-config';
+import { getDoctrineState } from '@/lib/doctrine-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +50,7 @@ export default async function AdminPage() {
   }
 
   // Authenticated: load initial data directly through the shared lib (server-side).
-  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine, tasks] =
+  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine, tasks, doctrineState] =
     await Promise.all([
       listMemory({ keysOnly: true }),
       listKernelAgents(),
@@ -58,6 +60,8 @@ export default async function AdminPage() {
       getLatestReport(),
       loadDoctrineAction(),
       listTasks(),
+      // Cached canon snapshot — never fetches GitHub on a page render.
+      getDoctrineState().catch(() => null),
     ]);
   const initialTasks = tasks.map((t) => withDerived(t));
   const keys = index.records
@@ -71,6 +75,7 @@ export default async function AdminPage() {
       <SiteHeader />
       <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
         <Suspense fallback={null}>
+          <FrozenFactsDashboard state={doctrineState} />
           <MemoryBrowser initialKeys={keys} keyCount={index.key_count ?? keys.length} />
           <KernelMeshViewer initialAgentIds={agentIds} initialMesh={initialMesh} />
           <ApiKeysManager initialKeys={apiKeys} />

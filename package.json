@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "migrate:memory:dry-run": "node scripts/migrate-memory-to-private.mjs",
-    "migrate:memory:apply": "node scripts/migrate-memory-to-private.mjs --apply"
+    "migrate:memory:apply": "node scripts/migrate-memory-to-private.mjs --apply",
+    "migrate:legacy:dry-run": "node scripts/migrate-legacy-store.mjs",
+    "migrate:legacy:apply": "node scripts/migrate-legacy-store.mjs --apply"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.23",

@@ -18,6 +18,10 @@
     {
       "path": "/api/cron/run-tasks",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/oauth-gc",
+      "schedule": "17 3 * * *"
     }
   ]
 }

@@ -8,7 +8,9 @@
 import { runDailyReview } from '../../../../lib/daily-reviewer';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// Draft -> red team -> synthesis are three sequential model calls against a
+// 1M-context model over a large corpus; 60s was sized for the old single call.
+export const maxDuration = 300;
 
 export async function GET(request) {
   // Cron auth — FAIL CLOSED, matching /api/cron/coordize. If CRON_SECRET is unset

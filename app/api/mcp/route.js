@@ -85,12 +85,45 @@ export const maxDuration = 300;
 // must enforce the SAME bearer auth — otherwise it is a full bypass of the
 // store's security. Clients send `Authorization: Bearer <token>` (an API key or
 // an OAuth access token).
+// A 401 here is indistinguishable from the outside: "no token", "unknown token"
+// and "token without memory:read" all look identical to a client, which reports
+// only "401 after successful authentication". Log the DISCRIMINATOR (never the
+// token) so the cause is visible in one request instead of a guessing game.
+function authDiagnostic(req, principal) {
+  const header = req.headers.get('authorization') || '';
+  const [scheme, token] = header.split(/\s+/, 2);
+  return {
+    method: req.method,
+    has_authorization_header: Boolean(header),
+    scheme: scheme ? scheme.toLowerCase() : null,
+    // Prefix only — enough to tell an OAuth token from an API key from junk.
+    token_prefix: token ? `${token.slice(0, 10)}…` : null,
+    token_len: token ? token.length : 0,
+    principal_type: principal?.type ?? null,
+    principal_scopes: principal?.scopes ?? null,
+    mcp_session_id: req.headers.get('mcp-session-id') ? 'present' : 'absent',
+    mcp_protocol_version: req.headers.get('mcp-protocol-version') || null,
+  };
+}
+
 function withAuth(fn) {
   return async (req) => {
     const principal = await authenticate(req, { allowOAuth: true });
     if (!principal || !hasScope(principal, 'memory:read')) {
       const origin = new URL(req.url).origin;
       const metadataUrl = `${origin}/.well-known/oauth-protected-resource`;
+      const diag = authDiagnostic(req, principal);
+      console.log(
+        '[v0] mcp auth denied:',
+        JSON.stringify({
+          ...diag,
+          cause: !diag.has_authorization_header
+            ? 'no_authorization_header'
+            : !principal
+              ? 'token_not_resolved'
+              : 'missing_memory_read_scope',
+        }),
+      );
       return new Response(
         JSON.stringify({ error: 'unauthorized', reason: await unauthorizedReason() }),
         {

@@ -50,7 +50,13 @@ export async function POST(request) {
 
     return error('unsupported_grant_type', 'Use authorization_code or refresh_token.');
   } catch (cause) {
-    console.log('[v0] oauth token endpoint failed:', cause?.message);
+    // Structured details distinguish expected store faults from programming
+    // errors in the logs while the client-facing response stays spec-shaped.
+    console.error('[v0] oauth token endpoint failed', {
+      name: cause?.name,
+      message: cause?.message,
+      stack: cause?.stack,
+    });
     return error('server_error', 'Token service is temporarily unavailable. Please try again shortly.', 500);
   }
 }

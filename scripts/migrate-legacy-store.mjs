@@ -149,7 +149,12 @@ async function auditMemory() {
       // migration, so a newer destination is normal ongoing work — keep it.
       // A newer SOURCE means something kept writing the legacy store and a
       // human must reconcile it; never auto-clobber in either direction.
-      const destNewer = Date.parse(dest.uploadedAt) >= Date.parse(blob.uploadedAt);
+      const destUploaded = Date.parse(dest.uploadedAt);
+      const sourceUploaded = Date.parse(blob.uploadedAt);
+      if (!Number.isFinite(destUploaded) || !Number.isFinite(sourceUploaded)) {
+        return { pathname: blob.pathname, status: 'differs_timestamps_invalid_REVIEW' };
+      }
+      const destNewer = destUploaded >= sourceUploaded;
       return { pathname: blob.pathname, status: destNewer ? 'differs_dest_newer_kept' : 'differs_SOURCE_NEWER_REVIEW' };
     } catch (error) {
       return { pathname: blob.pathname, status: 'failed', error: error.message };

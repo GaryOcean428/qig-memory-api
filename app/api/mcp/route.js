@@ -1,6 +1,6 @@
 import { createMcpHandler } from 'mcp-handler';
 import { z } from 'zod';
-import { toolDefs, READ_ONLY_TOOL_NAMES } from '../../../lib/qig-tools';
+import { annotationsFor, toolDefs, READ_ONLY_TOOL_NAMES } from '../../../lib/qig-tools';
 import { authenticate, hasScope, unauthorizedReason } from '../../../lib/auth.js';
 import { currentPrincipal, withPrincipal } from '../../../lib/auth-context.js';
 import { HELPER_GUIDE, HELPER_RESOURCE_URI } from '../../../lib/helper-agent.js';
@@ -29,8 +29,14 @@ const handler = createMcpHandler(
       server.registerTool(
         name,
         {
+          title: def.title,
           description: def.description,
           inputSchema: z.object(def.schema),
+          // Hosts use these to decide auto-permissions: a read-only tool can run
+          // without a per-call prompt, a destructive one always prompts. Without
+          // them every tool — even memory_get — prompts on every call, and
+          // Claude's connector review rejects the server outright.
+          annotations: annotationsFor(name),
         },
         async (args) => {
           try {
@@ -64,7 +70,7 @@ const handler = createMcpHandler(
   {
     serverInfo: { name: 'qig-memory-api', version: '0.2.0' },
     instructions:
-      'QIG Memory API MCP server. Tools operate a blob-backed memory store and the Fisher-Rao kernel mesh registry.',
+      'QIG Memory API MCP server. Tools operate a blob-backed memory store and the Fisher-Rao kernel mesh registry, plus read-only GitHub and web research lookups.',
   },
   { basePath: '/api' },
 );
@@ -75,7 +81,8 @@ export const maxDuration = 300;
 
 // The MCP tools operate the SAME memory store as the REST API, so the endpoint
 // must enforce the SAME bearer auth — otherwise it is a full bypass of the
-// store's security. Clients send `Authorization: Bearer <QIG_API_KEY>`.
+// store's security. Clients send `Authorization: Bearer <token>` (an API key or
+// an OAuth access token).
 function withAuth(fn) {
   return async (req) => {
     const principal = await authenticate(req, { allowOAuth: true });

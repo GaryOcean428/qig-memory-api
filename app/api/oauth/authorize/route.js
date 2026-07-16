@@ -46,12 +46,28 @@ async function validate(params) {
   if (responseType !== 'code' || !codeChallenge || challengeMethod !== 'S256') {
     return { response: oauthError(redirectUri, 'invalid_request', state, 'Authorization code + PKCE S256 is required.') };
   }
+  // RFC 6749 §3.3: when a request asks for more than the client is approved
+  // for, the server narrows the grant and reports the scope actually granted —
+  // it does not reject. `invalid_scope` is for scopes the server doesn't know.
+  // Clients read scopes_supported from our discovery metadata (read/write/admin)
+  // and legitimately request all of them, while every freshly registered client
+  // is approved for memory:read only. Rejecting therefore made it impossible for
+  // ANY new client to complete a connection. This mirrors issueTokens(), which
+  // already intersects requested scopes with the client's approved set.
   const approvedScopes = new Set(client.approved_scopes || ['memory:read']);
-  if (!requestedScopes.length || requestedScopes.some((scope) => !approvedScopes.has(scope))) {
-    return { response: oauthError(redirectUri, 'invalid_scope', state, 'This client is not approved for one or more requested scopes.') };
+  const grantedScopes = requestedScopes.filter((scope) => approvedScopes.has(scope));
+  if (!grantedScopes.length) {
+    return {
+      response: oauthError(
+        redirectUri,
+        'invalid_scope',
+        state,
+        'None of the requested scopes are approved for this client. An operator must grant access before it can connect.',
+      ),
+    };
   }
 
-  return { client, clientId, redirectUri, codeChallenge, state, scope: requestedScopes.join(' ') };
+  return { client, clientId, redirectUri, codeChallenge, state, scope: grantedScopes.join(' ') };
 }
 
 // Human-readable page for the most common connector failure: a stale/unknown
@@ -141,6 +157,9 @@ export async function GET(request) {
     scope: result.scope,
   });
   const consentParams = new URLSearchParams(url.searchParams);
+  // Show (and post back) the scope actually being granted, not the wider set the
+  // client asked for — otherwise the consent screen overstates the grant.
+  consentParams.set('scope', result.scope);
   consentParams.set('consent_token', consentToken);
   return NextResponse.redirect(new URL(`/oauth/consent?${consentParams.toString()}`, url.origin));
 }

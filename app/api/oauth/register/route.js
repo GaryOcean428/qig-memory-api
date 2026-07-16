@@ -5,6 +5,7 @@ import {
   isSafeRedirectUri,
   registerClient,
   toRegistrationResponse,
+  upgradeLegacyClientScopes,
 } from '../../../../lib/mcp-oauth-store';
 
 export const runtime = 'nodejs';
@@ -36,6 +37,9 @@ export async function POST(request) {
     // rate-limit slots or proliferate duplicate clients.
     const existing = await findClientByFingerprint({ redirectUris, clientName: body.client_name });
     if (existing) {
+      // A client registered under the old read-only default would otherwise be
+      // stuck there forever, since this dedup path returns it unchanged.
+      await upgradeLegacyClientScopes(existing);
       return NextResponse.json(toRegistrationResponse(existing), {
         status: 200,
         headers: { 'cache-control': 'no-store' },

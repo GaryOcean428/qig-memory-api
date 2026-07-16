@@ -29,7 +29,16 @@ async function validate(params) {
   const client = await getClient(clientId);
 
   if (!client || !redirectUri || !client.redirect_uris.includes(redirectUri)) {
-    return { response: NextResponse.json({ error: 'invalid_request', error_description: 'Unknown client or redirect URI.' }, { status: 400 }) };
+    // Cannot safely redirect: without a validated client + redirect_uri, bouncing
+    // the error back would be an open redirect. The GET (browser) path turns this
+    // into a human-readable reconnect page; POST keeps the strict JSON 400.
+    return {
+      unknownClient: true,
+      response: NextResponse.json(
+        { error: 'invalid_request', error_description: 'Unknown client or redirect URI.' },
+        { status: 400 },
+      ),
+    };
   }
   if (client.revoked_at) {
     return { response: oauthError(redirectUri, 'unauthorized_client', state, 'This OAuth client has been revoked.') };
@@ -45,9 +54,76 @@ async function validate(params) {
   return { client, clientId, redirectUri, codeChallenge, state, scope: requestedScopes.join(' ') };
 }
 
+// Human-readable page for the most common connector failure: a stale/unknown
+// client_id (e.g. a cached registration from a previous deployment). Rendered
+// only on the browser GET path so the user gets actionable guidance instead of
+// a bare JSON 400. The MCP endpoint URL is derived from the request origin so
+// it stays correct across custom domains, previews, and production.
+function unknownClientPage(mcpUrl) {
+  const safeMcpUrl = mcpUrl.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark light" />
+<title>Reconnect required · QIG Memory API</title>
+<style>
+  :root { color-scheme: dark light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 1.5rem; background: #0a0a0a; color: #ededed;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+  }
+  .card {
+    width: 100%; max-width: 30rem; background: #131313; border: 1px solid #262626;
+    border-radius: 14px; padding: 2rem; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em; color: #fbbf24;
+    background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.25);
+    padding: 0.25rem 0.6rem; border-radius: 999px; margin-bottom: 1.25rem;
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 0.75rem; letter-spacing: -0.01em; }
+  p { margin: 0 0 1rem; color: #a3a3a3; }
+  ol { margin: 0 0 1rem; padding-left: 1.25rem; color: #d4d4d4; }
+  li { margin-bottom: 0.4rem; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em;
+    background: #1f1f1f; border: 1px solid #2e2e2e; padding: 0.15rem 0.4rem; border-radius: 6px;
+    color: #e5e5e5; word-break: break-all;
+  }
+  .hint { font-size: 0.8rem; color: #737373; border-top: 1px solid #262626; padding-top: 1rem; margin-top: 1.25rem; }
+</style>
+</head>
+<body>
+  <main class="card">
+    <span class="badge">Reconnect required</span>
+    <h1>This connection is out of date</h1>
+    <p>The client credentials your MCP app sent aren&apos;t recognized by this server. This usually means the connector cached a registration from an earlier version and needs to register again.</p>
+    <p>To fix it, remove and re-add this MCP server in your client so it performs a fresh registration:</p>
+    <ol>
+      <li>Remove the existing <code>qig-memory</code> connection.</li>
+      <li>Add it again, pointing at <code>${safeMcpUrl}</code>.</li>
+      <li>Complete the sign-in prompt when it reopens.</li>
+    </ol>
+    <p class="hint">If you keep seeing this after re-adding, the server may need its latest deployment published. No action is needed on this page&mdash;you can close it.</p>
+  </main>
+</body>
+</html>`;
+  return new NextResponse(html, {
+    status: 400,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
 export async function GET(request) {
   const url = new URL(request.url);
   const result = await validate(url.searchParams);
+  if (result.unknownClient) return unknownClientPage(`${url.origin}/api/mcp`);
   if (result.response) return result.response;
 
   const session = await getSession();

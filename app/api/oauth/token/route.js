@@ -22,27 +22,41 @@ export async function POST(request) {
   } catch {
     return error('invalid_request', 'Expected form-encoded token request.');
   }
-  const grantType = form.get('grant_type');
-  const clientId = String(form.get('client_id') || '');
-  const client = await getClient(clientId);
-  if (!client) return error('invalid_client', 'Unknown OAuth client.', 401);
+  // Store faults (Blob outage, missing sealing secret) throw out of the store
+  // layer by design — return a spec-shaped server_error instead of letting them
+  // masquerade as invalid_grant, which would make clients discard good tokens.
+  try {
+    const grantType = form.get('grant_type');
+    const clientId = String(form.get('client_id') || '');
+    const client = await getClient(clientId);
+    if (!client) return error('invalid_client', 'Unknown OAuth client.', 401);
 
-  if (grantType === 'authorization_code') {
-    const code = String(form.get('code') || '');
-    const redirectUri = String(form.get('redirect_uri') || '');
-    const codeVerifier = String(form.get('code_verifier') || '');
-    const authorization = await consumeAuthorizationCode({ code, clientId, redirectUri, codeVerifier });
-    if (!authorization) return error('invalid_grant', 'Authorization code is invalid, expired, or PKCE verification failed.');
-    const tokens = await issueTokens({ clientId, userId: authorization.user_id, scope: authorization.scope });
-    if (!tokens) return error('invalid_grant', 'Client approval was revoked or no requested scopes remain approved.');
-    return NextResponse.json(tokens, { headers });
+    if (grantType === 'authorization_code') {
+      const code = String(form.get('code') || '');
+      const redirectUri = String(form.get('redirect_uri') || '');
+      const codeVerifier = String(form.get('code_verifier') || '');
+      const authorization = await consumeAuthorizationCode({ code, clientId, redirectUri, codeVerifier });
+      if (!authorization) return error('invalid_grant', 'Authorization code is invalid, expired, or PKCE verification failed.');
+      const tokens = await issueTokens({ clientId, userId: authorization.user_id, scope: authorization.scope });
+      if (!tokens) return error('invalid_grant', 'Client approval was revoked or no requested scopes remain approved.');
+      return NextResponse.json(tokens, { headers });
+    }
+
+    if (grantType === 'refresh_token') {
+      const tokens = await refreshTokens({ refreshToken: String(form.get('refresh_token') || ''), clientId });
+      if (!tokens) return error('invalid_grant', 'Refresh token is invalid or expired.');
+      return NextResponse.json(tokens, { headers });
+    }
+
+    return error('unsupported_grant_type', 'Use authorization_code or refresh_token.');
+  } catch (cause) {
+    // Structured details distinguish expected store faults from programming
+    // errors in the logs while the client-facing response stays spec-shaped.
+    console.error('[v0] oauth token endpoint failed', {
+      name: cause?.name,
+      message: cause?.message,
+      stack: cause?.stack,
+    });
+    return error('server_error', 'Token service is temporarily unavailable. Please try again shortly.', 500);
   }
-
-  if (grantType === 'refresh_token') {
-    const tokens = await refreshTokens({ refreshToken: String(form.get('refresh_token') || ''), clientId });
-    if (!tokens) return error('invalid_grant', 'Refresh token is invalid or expired.');
-    return NextResponse.json(tokens, { headers });
-  }
-
-  return error('unsupported_grant_type', 'Use authorization_code or refresh_token.');
 }

@@ -57,8 +57,10 @@ async function validate(params) {
 // Human-readable page for the most common connector failure: a stale/unknown
 // client_id (e.g. a cached registration from a previous deployment). Rendered
 // only on the browser GET path so the user gets actionable guidance instead of
-// a bare JSON 400.
-function unknownClientPage() {
+// a bare JSON 400. The MCP endpoint URL is derived from the request origin so
+// it stays correct across custom domains, previews, and production.
+function unknownClientPage(mcpUrl) {
+  const safeMcpUrl = mcpUrl.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -105,7 +107,7 @@ function unknownClientPage() {
     <p>To fix it, remove and re-add this MCP server in your client so it performs a fresh registration:</p>
     <ol>
       <li>Remove the existing <code>qig-memory</code> connection.</li>
-      <li>Add it again, pointing at <code>https://qig-memory-api.vercel.app/api/mcp</code>.</li>
+      <li>Add it again, pointing at <code>${safeMcpUrl}</code>.</li>
       <li>Complete the sign-in prompt when it reopens.</li>
     </ol>
     <p class="hint">If you keep seeing this after re-adding, the server may need its latest deployment published. No action is needed on this page&mdash;you can close it.</p>
@@ -121,7 +123,7 @@ function unknownClientPage() {
 export async function GET(request) {
   const url = new URL(request.url);
   const result = await validate(url.searchParams);
-  if (result.unknownClient) return unknownClientPage();
+  if (result.unknownClient) return unknownClientPage(`${url.origin}/api/mcp`);
   if (result.response) return result.response;
 
   const session = await getSession();

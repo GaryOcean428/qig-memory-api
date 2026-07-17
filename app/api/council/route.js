@@ -3,7 +3,11 @@ import { conveneCouncil, COUNCIL_MEMBERS, COUNCIL_SYNTHESIZER } from '../../../l
 import { deniedResponse, errorResponse, requireApiScope } from '../../../lib/http-auth';
 
 // The council runs 9 sequential-ish model calls across 3 phases; give it room.
-export const maxDuration = 300;
+// Three SEQUENTIAL phases (panel -> reflect -> synthesis), each bounded by the
+// slowest member at 90s, and panel/reflect now include bounded tool steps.
+// 300s left no room for that; phases run members in parallel, so the extra
+// members cost tokens rather than wall-clock.
+export const maxDuration = 800;
 
 export async function GET(req) {
   const authorization = await requireApiScope(req, 'memory:read');

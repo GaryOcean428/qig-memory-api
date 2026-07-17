@@ -68,7 +68,10 @@ export default async function OAuthConsentPage({ searchParams }) {
             </div>
           </div>
           <div className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
-            Client trust: <span className="font-medium text-foreground">{client.trusted ? 'Full operator' : 'Read only'}</span>
+            Client trust:{' '}
+            <span className="font-medium text-foreground">
+              {client.trusted ? 'Full operator — can also delete' : 'Agent — can read and write, cannot delete'}
+            </span>
           </div>
         </div>
 

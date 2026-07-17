@@ -83,8 +83,15 @@ export async function POST(req) {
 
   return result.toUIMessageStreamResponse({
     onError: (error) => {
-      console.log('[v0] chat route error:', error?.message || error);
-      return 'The helper agent hit an error. Check that AI_GATEWAY_API_KEY and BLOB_READ_WRITE_TOKEN are configured.';
+      // Never blame configuration for an arbitrary failure. This handler used to
+      // return a fixed "check AI_GATEWAY_API_KEY and BLOB_READ_WRITE_TOKEN"
+      // string for EVERY error — including an ETag mismatch that had nothing to
+      // do with credentials, and naming BLOB_READ_WRITE_TOKEN, a variable this
+      // project no longer even sets. It sent a real investigation down a dead
+      // end. Report what actually happened.
+      const message = String(error?.message || error || 'unknown error');
+      console.error('[v0] chat route error', { name: error?.name, message, stack: error?.stack });
+      return `The helper agent hit an error: ${message.slice(0, 300)}`;
     },
   });
 }

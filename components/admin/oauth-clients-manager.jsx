@@ -39,16 +39,16 @@ export function OAuthClientsManager({ initialClients }) {
                   <div className="flex items-center gap-2">
                     <span className="truncate font-medium text-foreground">{client.client_name}</span>
                     <StatusBadge tone={client.revoked_at ? 'error' : client.trusted ? 'success' : 'neutral'}>
-                      {client.revoked_at ? 'Revoked' : client.trusted ? 'Full operator' : 'Read only'}
+                      {client.revoked_at ? 'Revoked' : client.trusted ? 'Full operator' : 'Agent'}
                     </StatusBadge>
                   </div>
                   <code className="mt-1 block truncate font-mono text-xs text-muted-foreground">{client.client_id}</code>
-                  <p className="mt-1 text-xs text-muted-foreground">Scopes: {(client.approved_scopes || ['memory:read']).join(', ') || 'None'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Scopes: {(client.approved_scopes || []).join(', ') || 'None'}</p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button type="button" variant={client.trusted ? 'secondary' : 'default'} className="gap-2" disabled={isPending && pendingId === client.client_id} onClick={() => updateAccess(client, client.trusted ? 'read' : 'operator')}>
+                  <Button type="button" variant={client.trusted ? 'secondary' : 'default'} className="gap-2" disabled={isPending && pendingId === client.client_id} onClick={() => updateAccess(client, client.trusted ? 'agent' : 'operator')}>
                     {isPending && pendingId === client.client_id ? <LoadingSpinner size="sm" /> : client.trusted ? <ShieldX className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-                    <span>{client.trusted ? 'Downgrade to read' : 'Approve operator'}</span>
+                    <span>{client.trusted ? 'Downgrade to agent' : 'Approve operator'}</span>
                   </Button>
                   {!client.revoked_at ? (
                     <Button type="button" variant="secondary" className="gap-2" disabled={isPending && pendingId === client.client_id} onClick={() => updateAccess(client, 'revoked')}>

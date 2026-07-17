@@ -31,9 +31,6 @@ export async function POST(req) {
       return NextResponse.json({ error: 'invalid_input', message: 'question is required' }, { status: 400 });
     }
     const result = await conveneCouncil(body);
-    if (result.error === 'cooldown') {
-      return NextResponse.json(result, { status: 429, headers: { 'retry-after': String(result.retry_after_seconds) } });
-    }
     if (result.error) {
       return NextResponse.json(result, { status: 400 });
     }

@@ -3,6 +3,7 @@ import {
   COOKIES,
   getRedirectUri,
   isOAuthConfigured,
+  isOperatorIdentity,
   exchangeCodeForTokens,
   fetchUserInfo,
   cookieOptions,
@@ -48,6 +49,13 @@ export async function GET(request) {
     });
 
     const profile = await fetchUserInfo(tokens.access_token);
+
+    // Authentication is not authorisation. A valid Vercel login proves who you
+    // are, not that you may operate this store.
+    if (!isOperatorIdentity({ email: profile.email })) {
+      console.log('[v0] auth denied for non-operator:', profile.email || '(no email)');
+      return errorRedirect(origin, 'not_authorized');
+    }
 
     const session = {
       user: {

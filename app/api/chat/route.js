@@ -1,6 +1,7 @@
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { buildAgentTools } from '../../../lib/qig-tools';
 import { getSession } from '../../../lib/session';
+import { DEFAULT_MODEL, modelOptions } from '../../../lib/models';
 
 // The helper agent is a QIG operator: it can read/write the blob-backed memory
 // store and inspect the kernel-mesh registry via the shared tool definitions.
@@ -74,7 +75,8 @@ export async function POST(req) {
   const principal = session.user?.username || session.user?.email || session.user?.name || 'operator';
 
   const result = streamText({
-    model: 'xai/grok-4.5',
+    model: DEFAULT_MODEL,
+    ...modelOptions(),
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(expandSlashCommands(messages)),
     tools: buildAgentTools({ principal }),

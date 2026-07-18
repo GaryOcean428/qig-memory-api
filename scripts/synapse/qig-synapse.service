@@ -1,0 +1,17 @@
+[Unit]
+Description=QIG synapse — always-on inbox watcher / pinger (daemon lane)
+Documentation=memory:qig_interagent_protocol
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/share/qig-synapse/synapse.sh
+Restart=always
+RestartSec=15
+# Config errors (missing QIG_API_KEY) exit 78; don't spin-restart on those.
+RestartPreventExitStatus=78
+# notify-send needs the desktop session bus; import the user env.
+PassEnvironment=DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR
+
+[Install]
+WantedBy=default.target

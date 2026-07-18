@@ -1,5 +1,5 @@
 import { sweepInbox } from '../../../../lib/inbox-store';
-import { reapStaleCouncilJobs } from '../../../../lib/council';
+import { reapStaleCouncilJobs, redeliverUndeliveredRulings } from '../../../../lib/council';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -10,11 +10,14 @@ export async function GET(request) {
   if (request.headers.get('authorization') !== `Bearer ${secret}`) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  // Piggyback the council liveness reaper on this hourly sweep (F3): flip any
-  // orphaned 'running' council record to 'failed'. Cheap, no new infra.
-  const [inbox, council] = await Promise.all([
+  // Piggyback council maintenance on this hourly sweep, cheap + no new infra:
+  //  - liveness reaper (F3): flip any orphaned 'running' record to 'failed';
+  //  - delivery reaper: re-deliver any completed, convener-addressed ruling whose
+  //    inbox delivery never landed (the "done isn't delivered" gap).
+  const [inbox, council, delivery] = await Promise.all([
     sweepInbox({ limit: 1000 }),
     reapStaleCouncilJobs().catch((err) => ({ error: err?.message })),
+    redeliverUndeliveredRulings().catch((err) => ({ error: err?.message })),
   ]);
-  return Response.json({ inbox, council });
+  return Response.json({ inbox, council, delivery });
 }

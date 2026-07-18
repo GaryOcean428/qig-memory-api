@@ -1,5 +1,5 @@
 import { StatusBadge } from '@bsuite/ui';
-import { AlertTriangle, CalendarClock, FlaskConical, ListTodo } from 'lucide-react';
+import { AlertTriangle, CalendarClock, FlaskConical, Inbox, ListTodo } from 'lucide-react';
 
 // Read-only "work board" that pulls the scattered work sources into one
 // top-of-page view: tasks needing attention now, scheduled tasks, planned
@@ -74,7 +74,15 @@ export function TodosDashboard({ tasks = [], doctrine = null, inbox = [] }) {
     }
   }
 
-  const needNowCount = overdue.length + dueSoon.length + needsActionInbox.length;
+  // Tasks are the genuinely actionable "now" items. Inbox mail is mostly
+  // informational broadcasts (daily reviews, council rulings, task results) and
+  // gets its own capped section rather than swamping the action list.
+  const needNowCount = overdue.length + dueSoon.length;
+  const inboxShown = needsActionInbox.slice(0, 6);
+  const inboxMore = needsActionInbox.length - inboxShown.length;
+  // The action fetches at most 100; show "100+" when it is saturated so the
+  // number is not silently understated.
+  const inboxCountLabel = needsActionInbox.length >= 100 ? '100+' : String(needsActionInbox.length);
 
   return (
     <section className="elev-card mb-6 rounded-2xl border border-border bg-card p-5">
@@ -84,7 +92,7 @@ export function TodosDashboard({ tasks = [], doctrine = null, inbox = [] }) {
           <h2 className="text-sm font-semibold text-foreground">Work board</h2>
         </div>
         <StatusBadge tone={needNowCount ? 'warning' : 'success'}>
-          {needNowCount ? `${needNowCount} need${needNowCount === 1 ? 's' : ''} attention` : 'nothing due'}
+          {needNowCount ? `${needNowCount} task${needNowCount === 1 ? '' : 's'} need${needNowCount === 1 ? 's' : ''} attention` : 'nothing due'}
         </StatusBadge>
       </header>
 
@@ -93,10 +101,10 @@ export function TodosDashboard({ tasks = [], doctrine = null, inbox = [] }) {
         inbox mail. Seeded from the same data the panels below show, so it never fetches GitHub.
       </p>
 
-      {/* Needs action now — the top-of-board "do this" list */}
+      {/* Needs action now — overdue / due-soon TASKS, the top-of-board "do this" list */}
       <Section icon={AlertTriangle} title="Needs action now" count={needNowCount}>
         {needNowCount === 0 ? (
-          <p className="text-sm text-muted-foreground">Nothing overdue, due within the hour, or waiting in the inbox.</p>
+          <p className="text-sm text-muted-foreground">No task is overdue or due within the hour.</p>
         ) : (
           <ul className="space-y-2">
             {overdue.map((t) => (
@@ -120,24 +128,41 @@ export function TodosDashboard({ tasks = [], doctrine = null, inbox = [] }) {
                 <StatusBadge tone="warning">due {relTime(t.nextRunAt)}</StatusBadge>
               </li>
             ))}
-            {needsActionInbox.map((m) => (
-              <li
-                key={m.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background/40 p-3"
-              >
-                <span className="min-w-0 truncate text-sm text-foreground">
-                  <span className="text-muted-foreground">
-                    {m.from} → {m.to}:
-                  </span>{' '}
-                  {m.subject || m.type}
-                </span>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Pill>{m.type}</Pill>
-                  <StatusBadge tone={m.status === 'unread' ? 'info' : 'neutral'}>{m.status}</StatusBadge>
-                </div>
-              </li>
-            ))}
           </ul>
+        )}
+      </Section>
+
+      {/* Inbox — unacknowledged mail, capped (mostly informational broadcasts) */}
+      <Section icon={Inbox} title="Unacknowledged inbox" count={needsActionInbox.length ? inboxCountLabel : 0}>
+        {needsActionInbox.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No unacknowledged inbox mail.</p>
+        ) : (
+          <>
+            <ul className="space-y-2">
+              {inboxShown.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background/40 p-3"
+                >
+                  <span className="min-w-0 truncate text-sm text-foreground">
+                    <span className="text-muted-foreground">
+                      {m.from} → {m.to}:
+                    </span>{' '}
+                    {m.subject || m.type}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Pill>{m.type}</Pill>
+                    <StatusBadge tone={m.status === 'unread' ? 'info' : 'neutral'}>{m.status}</StatusBadge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {inboxMore > 0 ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                +{inboxMore}{needsActionInbox.length >= 100 ? '+' : ''} more unacknowledged — triage with inbox_read / inbox_ack.
+              </p>
+            ) : null}
+          </>
         )}
       </Section>
 

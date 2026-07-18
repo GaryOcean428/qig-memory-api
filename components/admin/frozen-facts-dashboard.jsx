@@ -50,7 +50,6 @@ export function FrozenFactsDashboard({ state }) {
   }
 
   const ff = state.canon?.frozen_facts;
-  const dash = state.canon?.integrity_dashboard;
   const drift = state.drift || {};
   const highFindings = (drift.findings || []).filter((f) => f.severity === 'high');
   const otherFindings = (drift.findings || []).filter((f) => f.severity !== 'high');
@@ -83,9 +82,7 @@ export function FrozenFactsDashboard({ state }) {
           <Row label="Superseded editions" value={ff?.superseded?.length ?? 0} />
         </div>
         <div className="rounded-xl border border-border bg-background/40 p-3">
-          <h3 className="text-xs font-medium text-foreground">Integrity dashboard</h3>
-          <Row label="Version" value={dash?.version_label} />
-          <Row label="Dated" value={dash?.date} />
+          <h3 className="text-xs font-medium text-foreground">Ledger coverage</h3>
           <Row label="Cited experiments" value={drift.cited_experiment_count} />
           <Row label="Ledger coverage" value={
             drift.ledger_coverage

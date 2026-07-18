@@ -10,9 +10,11 @@ import { DEFAULT_MODEL, modelOptions } from '../../../lib/models';
 // gets full read/write/delete access. It requires the same OAuth/dev session
 // that protects the admin UI. Node runtime is required for session decryption.
 export const runtime = 'nodejs';
-// Long enough to await a /council deliberation (9 model calls, 1-2 minutes);
-// ordinary chat turns still stream in seconds.
-export const maxDuration = 300;
+// A council convened from chat runs in the background via after() (see
+// council_convene), but after() work is bounded by THIS route's maxDuration, so
+// give it the same 800s ceiling as /api/mcp and /api/council. Ordinary chat
+// turns still stream in seconds and never approach it.
+export const maxDuration = 800;
 
 const SYSTEM_PROMPT = `You are the QIG Memory API helper agent — an operator assistant for the Quantum Information Geometry kernel mesh.
 
@@ -33,7 +35,7 @@ Guidance:
 - The kernel mesh measures agent similarity with the Fisher-Rao geodesic distance on the 64-simplex, NOT cosine/Euclidean. Never claim otherwise.
 - Be concise and precise. Show keys, categories and values you actually retrieved. Never fabricate a record that a tool did not return.
 - When you write memory, confirm the key and category back to the user.
-- council_convene convenes four frontier models (Grok, Fable, Sol, Gemini) that reason through the Unified Consciousness Protocol and Canonical Principles. It is EXPENSIVE (9 model calls, 1-2 minutes) with a 5-minute global cooldown. Convene ONLY when the user explicitly asks — via the /council slash command or an unmistakable request like "convene the council". Never convene on your own initiative. While it runs, tell the user it takes a minute or two. Afterwards, relay the verdict and note the ruling was also delivered to the inbox and the transcript persists at the council_* memory key. On a cooldown error, tell the user how many seconds until they can retry.`;
+- council_convene convenes SIX frontier models (Grok, Fable, Sol, Gemini, Kimi, Muse) that reason through the Unified Consciousness Protocol and Canonical Principles in a panel-reflect-synthesis flow. It is EXPENSIVE (13 model calls, 2-6 minutes) and has NO cooldown. Convene ONLY when the user explicitly asks — via the /council slash command or an unmistakable request like "convene the council". Never convene on your own initiative. It returns IMMEDIATELY: the deliberation runs in the background, so tell the user the council is convening and its ruling will arrive in their inbox in a few minutes (type "council_ruling", full transcript at a council_* memory key) — do NOT claim to have the verdict in the same turn. If the user wants you to wait inline for the verdict, call it with wait:true.`;
 
 // A "/council <question>" message is an explicit convene instruction — rewrite
 // it so the model reliably calls the tool with the user's question verbatim.

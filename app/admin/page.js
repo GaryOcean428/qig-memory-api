@@ -18,7 +18,8 @@ import { listMemory, listKernelAgents, syncKernel } from '@/lib/memory-store';
 import { listApiKeys } from '@/lib/api-keys';
 import { listOAuthClients } from '@/lib/mcp-oauth-store';
 import { getReviewerConfig, getLatestReport } from '@/lib/reviewer-config';
-import { getDoctrineState } from '@/lib/doctrine-sync';
+import { getDoctrineState, getIntegrityView } from '@/lib/doctrine-sync';
+import { BadgeCheck } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,7 @@ export default async function AdminPage() {
   }
 
   // Authenticated: load initial data directly through the shared lib (server-side).
-  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine, tasks, doctrineState, needsAction] =
+  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine, tasks, doctrineState, needsAction, integrityView] =
     await Promise.all([
       listMemory({ keysOnly: true }),
       listKernelAgents(),
@@ -65,6 +66,8 @@ export default async function AdminPage() {
       getDoctrineState().catch(() => null),
       // Unacked inbox mail for the work board (best-effort).
       listInboxNeedsActionAction().catch(() => []),
+      // Cached integrity view for the summary card (best-effort).
+      getIntegrityView().catch(() => null),
     ]);
   const initialTasks = tasks.map((t) => withDerived(t));
   const keys = index.records
@@ -79,6 +82,23 @@ export default async function AdminPage() {
       <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
         <Suspense fallback={null}>
           <TodosDashboard tasks={initialTasks} doctrine={doctrineState} inbox={needsAction} />
+          <a
+            href="/integrity"
+            className="elev-card mb-6 flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:bg-muted/40"
+          >
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <BadgeCheck className="size-4 shrink-0 text-purple-500" aria-hidden="true" />
+                <span className="text-sm font-semibold text-foreground">Integrity dashboard</span>
+              </div>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {integrityView
+                  ? `${integrityView.certified?.length ?? 0} certified · ${integrityView.open?.questions?.length ?? 0} open · ${integrityView.retired?.length ?? 0} retired${integrityView.meta?.stale ? ' · STALE' : ''} — generated from the registries`
+                  : 'Not synced yet — generated from the JSON registries'}
+              </p>
+            </div>
+            <span className="shrink-0 text-xs text-muted-foreground">View →</span>
+          </a>
           <FrozenFactsDashboard state={doctrineState} />
           <MemoryBrowser initialKeys={keys} keyCount={index.key_count ?? keys.length} />
           <KernelMeshViewer initialAgentIds={agentIds} initialMesh={initialMesh} />

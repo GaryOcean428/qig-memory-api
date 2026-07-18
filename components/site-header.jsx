@@ -40,6 +40,12 @@ export function SiteHeader() {
             Admin
           </Link>
           <Link
+            href="/integrity"
+            className="hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"
+          >
+            Integrity
+          </Link>
+          <Link
             href="/chat"
             className="hidden rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:inline-flex"
           >

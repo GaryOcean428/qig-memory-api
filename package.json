@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "check:tools": "node scripts/check-tool-manifest.mjs",
     "migrate:memory:dry-run": "node scripts/migrate-memory-to-private.mjs",
     "migrate:memory:apply": "node scripts/migrate-memory-to-private.mjs --apply",
     "migrate:legacy:dry-run": "node scripts/migrate-legacy-store.mjs",

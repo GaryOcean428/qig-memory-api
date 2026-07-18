@@ -1,0 +1,42 @@
+name: CI
+
+# Runs on PRs and on pushes to the long-lived branches. The single job is named
+# `build-and-test` on purpose: the repo ruleset on `main` requires a status check
+# with exactly that context before a PR can merge, so this is what lets a promote
+# into production pass on its own instead of needing an admin bypass.
+on:
+  pull_request:
+  push:
+    branches: [main, development]
+
+# A newer push to the same ref cancels the in-flight run — no point building a
+# commit that has already been superseded.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails if lib/qig-tools.js's tool surface drifts from docs/tool-manifest.json
+      # (a tool added/renamed/reclassified without regenerating the manifest).
+      - name: Check tool manifest is in sync
+        run: npm run check:tools
+
+      # A production build is the real gate — it catches the import/runtime errors
+      # a plain typecheck misses (e.g. a bad re-export surfacing during page-data
+      # collection). No secrets are needed: the app reads credentials at runtime,
+      # not at build time.
+      - name: Build
+        run: npm run build

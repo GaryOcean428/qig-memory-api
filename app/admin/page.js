@@ -9,7 +9,8 @@ import { DailyReviewerManager } from '@/components/admin/daily-reviewer-manager'
 import { DoctrineManager } from '@/components/admin/doctrine-manager';
 import { TaskManager } from '@/components/admin/task-manager';
 import { FrozenFactsDashboard } from '@/components/admin/frozen-facts-dashboard';
-import { loadDoctrineAction } from '@/app/admin/actions';
+import { TodosDashboard } from '@/components/admin/todos-dashboard';
+import { loadDoctrineAction, listInboxNeedsActionAction } from '@/app/admin/actions';
 import { listTasks, withDerived } from '@/lib/task-store';
 import { AuthButton } from '@/components/auth/auth-button';
 import { getSession } from '@/lib/session';
@@ -50,7 +51,7 @@ export default async function AdminPage() {
   }
 
   // Authenticated: load initial data directly through the shared lib (server-side).
-  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine, tasks, doctrineState] =
+  const [index, agentMap, apiKeys, oauthClients, reviewerConfig, reviewerReport, doctrine, tasks, doctrineState, needsAction] =
     await Promise.all([
       listMemory({ keysOnly: true }),
       listKernelAgents(),
@@ -62,6 +63,8 @@ export default async function AdminPage() {
       listTasks(),
       // Cached canon snapshot — never fetches GitHub on a page render.
       getDoctrineState().catch(() => null),
+      // Unacked inbox mail for the work board (best-effort).
+      listInboxNeedsActionAction().catch(() => []),
     ]);
   const initialTasks = tasks.map((t) => withDerived(t));
   const keys = index.records
@@ -75,6 +78,7 @@ export default async function AdminPage() {
       <SiteHeader />
       <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
         <Suspense fallback={null}>
+          <TodosDashboard tasks={initialTasks} doctrine={doctrineState} inbox={needsAction} />
           <FrozenFactsDashboard state={doctrineState} />
           <MemoryBrowser initialKeys={keys} keyCount={index.key_count ?? keys.length} />
           <KernelMeshViewer initialAgentIds={agentIds} initialMesh={initialMesh} />

@@ -19,6 +19,7 @@ import { getReviewerConfig, saveReviewerConfig, getLatestReport } from '../../li
 import { runDailyReview } from '../../lib/daily-reviewer';
 import { createTask, deleteTask, listTasks, updateTask, withDerived } from '../../lib/task-store';
 import { runTaskNow } from '../../lib/task-runner';
+import { listInboxMessages } from '../../lib/inbox-store';
 
 // Every action authenticates via the OAuth session before touching the store.
 // These run server-side, so they use the shared lib directly — no public REST
@@ -156,6 +157,31 @@ export async function listTasksAction() {
   await requireSession();
   const tasks = await listTasks();
   return tasks.map((t) => withDerived(t));
+}
+
+// Inbox mail that still needs attention: anything not yet acknowledged (unread OR
+// read-but-unacked), across namespaces, for the work-board dashboard. Best-effort
+// — a storage hiccup yields an empty list rather than breaking the admin page.
+export async function listInboxNeedsActionAction() {
+  await requireSession();
+  try {
+    const { messages } = await listInboxMessages({ limit: 100 });
+    return messages
+      .filter((m) => m.status !== 'acked')
+      .map((m) => ({
+        id: m.id,
+        from: m.from,
+        to: m.to,
+        namespace: m.namespace,
+        type: m.type,
+        subject: m.subject,
+        ts: m.ts,
+        status: m.status,
+      }));
+  } catch (err) {
+    console.log('[v0] listInboxNeedsActionAction error:', err?.message);
+    return [];
+  }
 }
 
 export async function createTaskAction(input) {

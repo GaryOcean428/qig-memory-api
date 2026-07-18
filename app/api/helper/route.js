@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import { askHelper, HELPER_GUIDE, HELPER_RESOURCE_URI } from '../../../lib/helper-agent';
 import { deniedResponse, errorResponse, requireApiScope } from '../../../lib/http-auth';
 
-// Raised from 60 so the helper can await council_convene when explicitly asked.
-export const maxDuration = 300;
+// Raised from 60 so the helper can convene the council when explicitly asked.
+// council_convene returns immediately and finishes in the background via after(),
+// whose work is bounded by this route's maxDuration — so match /api/mcp at 800.
+export const maxDuration = 800;
 
 export async function GET(req) {
   const authorization = await requireApiScope(req, 'memory:read');

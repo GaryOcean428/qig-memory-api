@@ -35,7 +35,8 @@ function formatBytes(bytes) {
 function formatDate(value) {
   if (!value) return 'never';
   try {
-    return new Date(value).toLocaleString();
+    // Deterministic UTC — identical on server + client, so no hydration mismatch (React #418).
+    return `${new Date(value).toLocaleString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })} UTC`;
   } catch {
     return String(value);
   }

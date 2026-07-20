@@ -140,20 +140,29 @@ export function TodosDashboard({ tasks = [], doctrine = null, inbox = [] }) {
           <>
             <ul className="space-y-2">
               {inboxShown.map((m) => (
-                <li
-                  key={m.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-border bg-background/40 p-3"
-                >
-                  <span className="min-w-0 truncate text-sm text-foreground">
-                    <span className="text-muted-foreground">
-                      {m.from} → {m.to}:
-                    </span>{' '}
-                    {m.subject || m.type}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <Pill>{m.type}</Pill>
-                    <StatusBadge tone={m.status === 'unread' ? 'info' : 'neutral'}>{m.status}</StatusBadge>
-                  </div>
+                <li key={m.id} className="rounded-xl border border-border bg-background/40">
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3">
+                      <span className="min-w-0 truncate text-sm text-foreground">
+                        <span className="text-muted-foreground">
+                          {m.from} → {m.to}:
+                        </span>{' '}
+                        {m.subject || m.type}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <Pill>{m.type}</Pill>
+                        <StatusBadge tone={m.status === 'unread' ? 'info' : 'neutral'}>{m.status}</StatusBadge>
+                      </div>
+                    </summary>
+                    <div className="border-t border-border p-3">
+                      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
+                        {typeof m.payload === 'string' ? m.payload : JSON.stringify(m.payload ?? {}, null, 2)}
+                      </pre>
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        id {m.id} · {m.ts} · ack via inbox_ack once actioned
+                      </p>
+                    </div>
+                  </details>
                 </li>
               ))}
             </ul>

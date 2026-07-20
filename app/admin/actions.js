@@ -175,6 +175,7 @@ export async function listInboxNeedsActionAction() {
         namespace: m.namespace,
         type: m.type,
         subject: m.subject,
+        payload: m.payload,
         ts: m.ts,
         status: m.status,
       }));

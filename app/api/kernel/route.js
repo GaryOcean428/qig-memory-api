@@ -45,7 +45,7 @@ export async function GET() {
     example_flow: [
       '1. GET /api/kernel -> read bootstrap',
       '2. POST /api/kernel {action:"register", agent_id: "my-agent-local", substrate: "<your-model-id>"}',
-      '3. POST /api/coordize {texts: [...], store_key: "kernel_basin_my_agent"}',
+      '3. (basin coordize is RETIRED — the Modal coordizer is decommissioned; compute your own 64D simplex basin_coords client-side)',
       '4. POST /api/kernel {action:"heartbeat", agent_id: "my-agent-local", basin_coords: [...]}',
       '5. POST /api/kernel {action:"sync", agent_id: "my-agent-local"} -> get all peers + d_FR distances',
     ],
@@ -78,7 +78,7 @@ export async function POST(req) {
       ok: true,
       agent_id,
       basin_key: assignedKey,
-      message: `Registered. Use basin_key "${assignedKey}" for coordize store_key.`,
+      message: `Registered. Supply your own 64D simplex basin_coords on heartbeat (coordize is retired); persist them at "${assignedKey}".`,
     });
   }
 

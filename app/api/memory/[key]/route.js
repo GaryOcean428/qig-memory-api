@@ -75,7 +75,7 @@ export async function POST(req, { params }) {
 }
 
 export async function DELETE(req, { params }) {
-  const authorization = await requireScope(req, 'memory:admin');
+  const authorization = await requireScope(req, 'memory:delete');
   if (authorization.error) return denied(authorization);
   const { key } = await params;
   if (!(await deleteMemory(key))) return NextResponse.json({ error: 'not_found', key }, { status: 404 });

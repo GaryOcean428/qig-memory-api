@@ -28,7 +28,8 @@ export default async function OAuthConsentPage({ searchParams }) {
   const scopeDescriptions = {
     'memory:read': 'Read, list, and search memory records and inspect the kernel mesh.',
     'memory:write': 'Create and update memory records and scoring metadata.',
-    'memory:admin': 'Delete records and perform cross-namespace administrative operations.',
+    'memory:delete': 'Delete memory records (correct stale entries, remove wrong ones).',
+    'memory:admin': 'Mint API keys and perform cross-namespace administrative operations.',
   };
 
   return (
@@ -70,7 +71,9 @@ export default async function OAuthConsentPage({ searchParams }) {
           <div className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
             Client trust:{' '}
             <span className="font-medium text-foreground">
-              {client.trusted ? 'Full operator — can also delete' : 'Agent — can read and write, cannot delete'}
+              {client.trusted
+                ? 'Full operator — read, write, delete, and administer (mint keys, cross-namespace)'
+                : 'Agent — can read, write, and delete records (no key-minting or cross-namespace admin)'}
             </span>
           </div>
         </div>

@@ -41,12 +41,13 @@ const handler = createMcpHandler(
         async (args) => {
           try {
             const principal = currentPrincipal();
-            // Explicit requiredScope wins; memory_delete is admin; anything not
-            // in the read-only set mutates state and therefore needs write.
+            // Explicit requiredScope wins; memory_delete needs the delete scope
+            // (agents can maintain the corpus); anything not in the read-only set
+            // mutates state and therefore needs write.
             const requiredScope =
               def.requiredScope ||
               (name === 'memory_delete'
-                ? 'memory:admin'
+                ? 'memory:delete'
                 : READ_ONLY_TOOL_NAMES.has(name)
                   ? 'memory:read'
                   : 'memory:write');

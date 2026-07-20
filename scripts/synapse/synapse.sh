@@ -151,8 +151,8 @@ process_messages() {
 # process_messages. One call per cycle (was broadcast + N per-recipient calls).
 poll_mesh() {
   local url resp
-  url="$QIG_MEMORY_URL/api/inbox?namespace=qig&status=unread&include_broadcast=true&limit=100"
-  resp=$(curl -fsS --max-time 20 -H "Authorization: Bearer $QIG_API_KEY" "$url" 2>/dev/null) || { log "poll: fetch failed"; return 0; }
+  url="$QIG_MEMORY_URL/api/inbox?namespace=qig&status=unread&include_broadcast=true&limit=50"
+  resp=$(curl -fsS --max-time 45 -H "Authorization: Bearer $QIG_API_KEY" "$url" 2>/dev/null) || { log "poll: fetch failed"; return 0; }
   printf '%s' "$resp" | process_messages
 }
 

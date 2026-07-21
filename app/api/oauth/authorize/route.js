@@ -42,6 +42,9 @@ async function validate(params) {
       unknown: !client ? 'client' : 'redirect',
       client_id: clientId || null,
       client_found: Boolean(client),
+      redirect_received: redirectUri || null,
+      registered_uris: client?.redirect_uris ?? null,
+      client_keys: client ? Object.keys(client).sort() : null,
     };
     return {
       unknownClient: true,

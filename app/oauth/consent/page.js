@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { Button, Logo, StatusBadge } from '@bsuite/ui';
 import { Check, ShieldCheck, Wrench } from 'lucide-react';
 import { getSession } from '../../../lib/session';
-import { getClient } from '../../../lib/mcp-oauth-store';
+import { getClient, redirectUriAllowed } from '../../../lib/mcp-oauth-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,11 @@ export default async function OAuthConsentPage({ searchParams }) {
   if (!session) redirect(`/api/auth/vercel/login?returnTo=${encodeURIComponent(`/oauth/consent?${new URLSearchParams(params).toString()}`)}`);
 
   const client = await getClient(params.client_id);
-  if (!client || !params.redirect_uri || !client.redirect_uris.includes(params.redirect_uri)) {
+  // Same equivalence rule as the authorize route: the redirect_uri arrives
+  // via query string, where the edge rewrites the loopback host form
+  // (127.0.0.1 → localhost) — exact matching rejected every valid consent
+  // view for 127.0.0.1-registered clients.
+  if (!client || !params.redirect_uri || !redirectUriAllowed(client, params.redirect_uri)) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12">
         <section className="elev-card w-full max-w-lg rounded-2xl border border-border bg-card p-8 text-center">

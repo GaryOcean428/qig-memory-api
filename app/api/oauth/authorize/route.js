@@ -5,6 +5,7 @@ import {
   createAuthorizationCode,
   createConsentToken,
   getClient,
+  redirectUriAllowed,
 } from '../../../../lib/mcp-oauth-store';
 
 export const runtime = 'nodejs';
@@ -28,14 +29,25 @@ async function validate(params) {
   const requestedScopes = (params.get('scope') || 'memory:read').split(/\s+/).filter(Boolean);
   const client = await getClient(clientId);
 
-  if (!client || !redirectUri || !client.redirect_uris.includes(redirectUri)) {
+  if (!client || !redirectUri || !redirectUriAllowed(client, redirectUri)) {
     // Cannot safely redirect: without a validated client + redirect_uri, bouncing
     // the error back would be an open redirect. The GET (browser) path turns this
     // into a human-readable reconnect page; POST keeps the strict JSON 400.
+    // The diag code distinguishes the two failure shapes from the outside
+    // (curl-able HTML comment / JSON field) without a dashboard trip:
+    //   unknown=client   → getClient() returned null (store read / unseal issue)
+    //   unknown=redirect → client found but redirect_uri not accepted
+    // client_ids are public, unguessable registration handles — safe to echo.
+    const diag = {
+      unknown: !client ? 'client' : 'redirect',
+      client_id: clientId || null,
+      client_found: Boolean(client),
+    };
     return {
       unknownClient: true,
+      diag,
       response: NextResponse.json(
-        { error: 'invalid_request', error_description: 'Unknown client or redirect URI.' },
+        { error: 'invalid_request', error_description: 'Unknown client or redirect URI.', diag },
         { status: 400 },
       ),
     };
@@ -75,8 +87,9 @@ async function validate(params) {
 // only on the browser GET path so the user gets actionable guidance instead of
 // a bare JSON 400. The MCP endpoint URL is derived from the request origin so
 // it stays correct across custom domains, previews, and production.
-function unknownClientPage(mcpUrl) {
+function unknownClientPage(mcpUrl, diag) {
   const safeMcpUrl = mcpUrl.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const diagComment = diag ? `<!-- oauth-diag: ${JSON.stringify(diag)} -->` : '';
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -128,6 +141,7 @@ function unknownClientPage(mcpUrl) {
     </ol>
     <p class="hint">If you keep seeing this after re-adding, the server may need its latest deployment published. No action is needed on this page&mdash;you can close it.</p>
   </main>
+  ${diagComment}
 </body>
 </html>`;
   return new NextResponse(html, {
@@ -139,7 +153,7 @@ function unknownClientPage(mcpUrl) {
 export async function GET(request) {
   const url = new URL(request.url);
   const result = await validate(url.searchParams);
-  if (result.unknownClient) return unknownClientPage(`${url.origin}/api/mcp`);
+  if (result.unknownClient) return unknownClientPage(`${url.origin}/api/mcp`, result.diag);
   if (result.response) return result.response;
 
   const session = await getSession();

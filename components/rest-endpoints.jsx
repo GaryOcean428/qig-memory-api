@@ -12,7 +12,7 @@ const ENDPOINTS = [
   { methods: ['GET'], path: '/api/memory', desc: 'List records (pagination, keys_only, prefix, category filters).' },
   { methods: ['GET', 'PUT', 'POST', 'DELETE'], path: '/api/memory/[key]', desc: 'Read, upsert, partial-update (scoring) and delete a record.' },
   { methods: ['GET', 'POST'], path: '/api/kernel', desc: 'Bootstrap doc, plus register / heartbeat / sync for the mesh.' },
-  { methods: ['POST'], path: '/api/coordize', desc: 'Harvest + PGA on GPU, returns 64D basin coordinates.' },
+  { methods: ['GET', 'POST'], path: '/api/coordize', desc: 'RETIRED — Modal GPU coordizer decommissioned. Always returns 410 Gone, no auth required.' },
   { methods: ['ALL'], path: '/api/mcp', desc: 'Streamable-HTTP MCP server exposing memory + kernel tools.' },
 ];
 

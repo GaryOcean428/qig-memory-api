@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server';
 import { conveneCouncil, COUNCIL_MEMBERS, COUNCIL_SYNTHESIZER } from '../../../lib/council';
 import { deniedResponse, errorResponse, requireApiScope } from '../../../lib/http-auth';
 
-// The council runs 9 sequential-ish model calls across 3 phases; give it room.
-// Three SEQUENTIAL phases (panel -> reflect -> synthesis), each bounded by the
-// slowest member at 90s, and panel/reflect now include bounded tool steps.
-// 300s left no room for that; phases run members in parallel, so the extra
-// members cost tokens rather than wall-clock.
+// The council runs 13 model calls (2N+1 with the default 6 members) across 3
+// SEQUENTIAL phases (panel -> reflect -> synthesis); give it room. Full budget
+// arithmetic (and why 800 can still be exceeded in the all-fallbacks worst
+// case, and what protects the route when it is) lives in lib/council.js next
+// to CONVENE_MAX_DURATION_S / MEMBER_TIMEOUT_MS / the deadline-aware guard in
+// callMember — this literal MUST stay equal to CONVENE_MAX_DURATION_S there
+// (Next.js requires maxDuration to be a literal number in the route file, so
+// it cannot simply import the constant).
 export const maxDuration = 800;
 
 export async function GET(req) {

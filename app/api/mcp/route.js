@@ -82,6 +82,19 @@ const handler = createMcpHandler(
 // model calls, 2-6 minutes with per-member fallbacks); the MCP surface must
 // outlive it. Matches app/api/council/route.js (800) so a council reached VIA
 // MCP is not killed server-side at the old 300s cap. All other tools remain fast.
+//
+// 800 is Vercel's GA ceiling for this project's plan (Pro/Enterprise with fluid
+// compute — confirmed indirectly: Hobby caps maxDuration at 300s and this route
+// already ran at 800 in production). An "Extended max duration" beta exists (up
+// to 1800s) but requires team enrollment this repo cannot confirm and is
+// incompatible with Secure Compute/Static IPs, so raising this literal without
+// that confirmation risks an unverified deploy-time rejection — see the fuller
+// note next to CONVENE_MAX_DURATION_S in lib/council.js, which this MUST stay
+// equal to (Next.js requires maxDuration to be a literal number here, so it
+// cannot simply import the constant). The worst case (750..900s, see the
+// budget-arithmetic comment above COUNCIL_CONCURRENCY in lib/council.js) can
+// still exceed 800s; the deadline-aware guard in callMember is what keeps that
+// survivable rather than a bigger number here.
 export const maxDuration = 800;
 
 // The MCP tools operate the SAME memory store as the REST API, so the endpoint

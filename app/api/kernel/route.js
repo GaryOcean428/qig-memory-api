@@ -27,7 +27,13 @@ export async function GET() {
         body: { action: 'heartbeat', agent_id: 'string', basin_coords: '[64 simplex]', status: 'string' },
       },
       sync: { method: 'POST', body: { action: 'sync', agent_id: 'string' } },
-      coordize: { method: 'POST', url: '/api/coordize' },
+      // coordize: RETIRED 2026-07-20 — deliberately NOT listed here. It used to be
+      // advertised as `{ method: 'POST', url: '/api/coordize' }` in this same object;
+      // a mesh client that mechanically calls every advertised endpoint (rather than
+      // reading the prose in example_flow below) would keep POSTing to a dead route
+      // forever. /api/coordize now answers any caller with 410 Gone regardless — see
+      // that route for the 2026-07-23 hardening note — but the fix here is not
+      // advertising it as callable in the first place.
     },
     auth: {
       scheme: 'bearer',
@@ -40,7 +46,10 @@ export async function GET() {
       type_contract: 'simplex_only',
       note: 'basin_coords MUST be non-negative and sum to ~1 (simplex constraint). Distance is geodesic on the Fisher-Rao manifold, NOT Euclidean cosine. PGA tangent-space representations are a different type and do not flow through this endpoint — convert to simplex at the source.',
     },
-    harvest_url: 'https://garyocean428--vex-coordizer-harvest-coordizerharvester-harvest.modal.run',
+    // harvest_url: REMOVED 2026-07-23 — pointed at the same decommissioned Modal
+    // deployment as the retired /api/coordize proxy. Advertising a dead compute URL
+    // in a machine-readable bootstrap doc invites exactly the kind of tight-loop
+    // caller that flooded /api/coordize with 401s; don't repeat that here.
     memory_api: 'https://qig-memory-api.vercel.app/api/memory',
     example_flow: [
       '1. GET /api/kernel -> read bootstrap',

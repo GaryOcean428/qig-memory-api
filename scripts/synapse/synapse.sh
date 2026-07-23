@@ -50,12 +50,19 @@ ping_op() {   # $1 title  $2 body
 # WHICH lane must act and whether it is live. Never fatal; degrades to "".
 presence_for() {   # $1 = recipient handle
   [ -z "${QIG_API_KEY:-}" ] && return 0
-  local h lc resp role seen out age now seen_epoch
+  local h lc tmp status resp role seen out age now seen_epoch
   h="$1"; [ -z "$h" ] && return 0
   [ "$h" = broadcast ] && { printf 'all lanes'; return 0; }
   lc=$(printf '%s' "$h" | tr '[:upper:]' '[:lower:]')
-  resp=$(curl -fsS --max-time 10 -H "Authorization: Bearer $QIG_API_KEY" \
-        "$QIG_MEMORY_URL/api/memory/qig_presence_$lc" 2>/dev/null)
+  tmp=$(mktemp)
+  status=$(curl -sS --max-time 10 -H "Authorization: Bearer $QIG_API_KEY" \
+        -o "$tmp" -w '%{http_code}' "$QIG_MEMORY_URL/api/memory/qig_presence_$lc" 2>/dev/null) || status=000
+  resp=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
+  # 401/403 is a credential problem, not "this lane never registered" — say so
+  # distinctly instead of collapsing both into the same misleading "unregistered".
+  case "$status" in
+    401|403) printf 'auth_error'; return 0 ;;
+  esac
   [ -z "$resp" ] && { printf 'unregistered'; return 0; }
   # role from the record content JSON; liveness from the server-stamped write time
   # (so any write to the presence key IS the registration heartbeat).
@@ -149,18 +156,58 @@ process_messages() {
 # NO recipient filter: casing drift in the stored `to` folder must not hide mail,
 # and a synapse watches every lane. Filtering/allow-list happens client-side in
 # process_messages. One call per cycle (was broadcast + N per-recipient calls).
+#
+# Diagnosability: the old version used `curl -fsS` and collapsed EVERY non-2xx
+# outcome (bad/expired key, network blip, server 5xx) into one indistinguishable
+# "poll: fetch failed" log line — from the outside that reads as generic
+# "flaky", with no way to tell a credential problem from a network hiccup
+# without a separate investigation. We now capture the HTTP status separately
+# and log it, and — since a 401/403 here means EVERY future poll will also fail
+# until a human fixes the key (retrying on the same cadence changes nothing) —
+# a consecutive-auth-failure streak escalates to a desktop ping instead of
+# silently logging forever. This does NOT retry faster on failure (still one
+# call per QIG_POLL_SECONDS): a hot retry loop on an auth failure is itself a
+# bug (see the /api/coordize 401-flood root-cause fix this shipped alongside).
+CONSEC_AUTH_FAIL=0
 poll_mesh() {
-  local url resp
+  local url tmp status body
   url="$QIG_MEMORY_URL/api/inbox?namespace=qig&status=unread&include_broadcast=true&limit=50"
-  resp=$(curl -fsS --max-time 45 -H "Authorization: Bearer $QIG_API_KEY" "$url" 2>/dev/null) || { log "poll: fetch failed"; return 0; }
-  printf '%s' "$resp" | process_messages
+  tmp=$(mktemp)
+  status=$(curl -sS --max-time 45 -H "Authorization: Bearer $QIG_API_KEY" -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null) || status=000
+  body=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
+  case "$status" in
+    200)
+      CONSEC_AUTH_FAIL=0
+      printf '%s' "$body" | process_messages
+      ;;
+    401|403)
+      CONSEC_AUTH_FAIL=$((CONSEC_AUTH_FAIL + 1))
+      log "poll: AUTH_FAILED status=$status (consecutive=$CONSEC_AUTH_FAIL) — QIG_API_KEY missing/invalid/revoked, check $CONF"
+      if [ "$CONSEC_AUTH_FAIL" -eq 3 ]; then
+        ping_op "QIG synapse — auth failing" "QIG_API_KEY rejected (HTTP $status) for 3 consecutive polls — daemon cannot see inbox mail. Check ~/.config/qig/synapse.env."
+      fi
+      ;;
+    000)
+      log "poll: network/timeout (no HTTP response within 45s)"
+      ;;
+    *)
+      log "poll: unexpected status=$status"
+      ;;
+  esac
 }
 
 # --- liveness heartbeat: a memory record lanes can read (synapse_live?). -----
 heartbeat() {
-  curl -fsS --max-time 15 -X PUT -H "Authorization: Bearer $QIG_API_KEY" -H 'Content-Type: application/json' \
+  local status
+  status=$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $QIG_API_KEY" -H 'Content-Type: application/json' \
     --data "{\"content\":\"$(date -u +%FT%TZ)\",\"category\":\"synapse\",\"source\":\"qig-synapse-daemon\"}" \
-    "$QIG_MEMORY_URL/api/memory/qig_synapse_heartbeat" >/dev/null 2>&1 || true
+    "$QIG_MEMORY_URL/api/memory/qig_synapse_heartbeat" 2>/dev/null) || status=000
+  case "$status" in
+    200|201) : ;;
+    401|403) log "heartbeat: AUTH_FAILED status=$status — QIG_API_KEY missing/invalid/revoked" ;;
+    000) log "heartbeat: network/timeout" ;;
+    *) log "heartbeat: unexpected status=$status" ;;
+  esac
 }
 
 main() {

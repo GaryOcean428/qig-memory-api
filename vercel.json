@@ -21,7 +21,7 @@
     },
     {
       "path": "/api/cron/doctrine-sync",
-      "schedule": "23 * * * *"
+      "schedule": "23 5 * * *"
     }
   ]
 }

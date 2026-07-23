@@ -1,4 +1,4 @@
-import { sweepInbox } from '../../../../lib/inbox-store';
+import { sweepInboxChain } from '../../../../lib/inbox-store';
 import { reapStaleCouncilJobs, redeliverUndeliveredRulings } from '../../../../lib/council';
 
 export const runtime = 'nodejs';
@@ -19,8 +19,15 @@ export async function GET(request) {
   //  - liveness reaper (F3): flip any orphaned 'running' record to 'failed';
   //  - delivery reaper: re-deliver any completed, convener-addressed ruling whose
   //    inbox delivery never landed (the "done isn't delivered" gap).
+  // sweepInboxChain follows the sweep's composite cursor to the END of the
+  // walk (not one 1000-blob page), because minting the ts-index markers
+  // requires a chain reaching has_more=false — a one-shot sweep would re-index
+  // the same first 1000 messages every run forever without ever activating the
+  // index path. Now that this cron is DAILY (PR #81), completing walks matters
+  // even more: see the budget arithmetic and the cross-invocation persisted
+  // resume in lib/inbox-store.js.
   const [inbox, council, delivery] = await Promise.all([
-    sweepInbox({ limit: 1000 }),
+    sweepInboxChain({ pageBudget: 20, limit: 1000 }),
     reapStaleCouncilJobs().catch((err) => ({ error: err?.message })),
     redeliverUndeliveredRulings().catch((err) => ({ error: err?.message })),
   ]);

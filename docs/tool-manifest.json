@@ -1,6 +1,6 @@
 {
   "_comment": "GENERATED from lib/qig-tools.js by scripts/check-tool-manifest.mjs. Do not edit by hand — run `npm run check:tools -- --write` and update references/mcp.md in the skills repo to match.",
-  "tool_count": 30,
+  "tool_count": 33,
   "tools": {
     "artifact_finalize": "write",
     "artifact_get_rows": "read",
@@ -20,11 +20,14 @@
     "kernel_status": "read",
     "kernel_sync": "read",
     "memory_delete": "admin",
+    "memory_gc": "write",
     "memory_get": "read",
     "memory_list": "read",
     "memory_post": "write",
     "memory_put": "write",
+    "memory_reindex": "write",
     "memory_search": "read",
+    "memory_wormhole": "read",
     "repo_lookup": "read",
     "task_create": "write",
     "task_delete": "write",

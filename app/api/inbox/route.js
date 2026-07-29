@@ -24,7 +24,10 @@ export async function POST(req) {
   const authorization = await requireApiScope(req, 'memory:write');
   if (authorization.error) return deniedResponse(authorization);
   try {
-    return NextResponse.json({ ok: true, message: await sendInboxMessage(await req.json()) }, { status: 201 });
+    const message = await sendInboxMessage(await req.json(), {
+      allowedNamespaces: authorization.principal?.namespaces ?? null,
+    });
+    return NextResponse.json({ ok: true, message }, { status: 201 });
   } catch (error) {
     return errorResponse(error);
   }

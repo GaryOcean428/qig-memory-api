@@ -40,3 +40,13 @@ jobs:
       # not at build time.
       - name: Build
         run: npm run build
+
+      # Proves the inbox-namespace-to-credential binding server-side: a
+      # namespace-restricted credential is denied by sendInboxMessage, task
+      # creation/run, council convene, and artifact finalize; an unrestricted
+      # or explicitly-permitted one passes; malformed restrictions fail
+      # closed. Standalone (no live Blob/network needed — see the script's own
+      # header). A regression here means the silo-enforcement invariant broke,
+      # not a one-off manual check.
+      - name: Verify inbox namespace binding
+        run: npm run verify:namespace-binding

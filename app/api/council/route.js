@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { conveneCouncil, COUNCIL_MEMBERS, COUNCIL_SYNTHESIZER } from '../../../lib/council';
 import { deniedResponse, errorResponse, requireApiScope } from '../../../lib/http-auth';
+import { namespacePermits } from '../../../lib/auth';
 
 // The council runs 13 model calls (2N+1 with the default 6 members) across 3
 // SEQUENTIAL phases (panel -> reflect -> synthesis); give it room. Full budget
@@ -28,6 +29,15 @@ export async function POST(req) {
   // Convening writes (council_* ruling + inbox delivery), so it needs write scope.
   const authorization = await requireApiScope(req, 'memory:write');
   if (authorization.error) return deniedResponse(authorization);
+  // Council rulings always deliver to the hardcoded 'qig' inbox namespace
+  // (lib/council.js) — a credential restricted away from 'qig' cannot carry
+  // that write, so it may not convene.
+  if (!namespacePermits(authorization.principal, 'qig')) {
+    return NextResponse.json(
+      { error: 'namespace_restricted', message: 'namespace-restricted credentials without "qig" access cannot convene the council' },
+      { status: 403 },
+    );
+  }
   try {
     const body = await req.json();
     if (!body.question || typeof body.question !== 'string') {

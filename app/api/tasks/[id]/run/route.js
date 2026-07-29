@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeDetailed } from '../../../../../lib/auth.js';
+import { authorizeDetailed, isNamespaceRestricted } from '../../../../../lib/auth.js';
 import { runTaskNow } from '../../../../../lib/task-runner.js';
 
 // Manual "run now" — executes a task immediately regardless of its schedule.
@@ -10,6 +10,15 @@ export const maxDuration = 300;
 export async function POST(req, { params }) {
   const auth = await authorizeDetailed(req, 'memory:write', { allowOAuth: true });
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  // Same rule as task creation (POST /api/tasks): the task-runner's LLM loop
+  // holds an unrestricted inbox_send, so a namespace-restricted credential
+  // cannot be allowed to trigger a run either — not just a create.
+  if (isNamespaceRestricted(auth.principal)) {
+    return NextResponse.json(
+      { error: 'namespace_restricted', message: 'namespace-restricted credentials cannot run autonomous tasks' },
+      { status: 403 },
+    );
+  }
   const { id } = await params;
   try {
     const result = await runTaskNow(id);

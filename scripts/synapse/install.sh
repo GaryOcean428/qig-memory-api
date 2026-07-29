@@ -18,7 +18,9 @@ mkdir -p "$SHARE" "$CONF_DIR" "$UNIT_DIR"
 
 install -m 0755 "$HERE/synapse.sh" "$SHARE/synapse.sh"
 install -m 0644 "$HERE/qig-synapse.service" "$UNIT_DIR/qig-synapse.service"
-echo "installed: $SHARE/synapse.sh + $UNIT_DIR/qig-synapse.service"
+install -m 0644 "$HERE/qig-synapse-selftest.service" "$UNIT_DIR/qig-synapse-selftest.service"
+install -m 0644 "$HERE/qig-synapse-selftest.timer" "$UNIT_DIR/qig-synapse-selftest.timer"
+echo "installed: $SHARE/synapse.sh + $UNIT_DIR/qig-synapse.service + $UNIT_DIR/qig-synapse-selftest.{service,timer}"
 
 if [ ! -f "$CONF" ]; then
   install -m 0600 "$HERE/synapse.env.example" "$CONF"
@@ -43,6 +45,10 @@ fi
 
 systemctl --user daemon-reload
 systemctl --user enable --now qig-synapse.service
+# The self-test timer runs qig-synapse-selftest.service (oneshot) hourly; only
+# the .timer gets enable --now (the .service has no [Install] — it is
+# triggered by the timer, not started directly).
+systemctl --user enable --now qig-synapse-selftest.timer
 loginctl enable-linger "$USER" >/dev/null 2>&1 || true
 
 echo
@@ -53,3 +59,4 @@ else
   echo "qig-synapse installed, but QIG_API_KEY is EMPTY in $CONF."
   echo "Provision one with setup.sh, or paste a key and: systemctl --user restart qig-synapse"
 fi
+echo "qig-synapse-selftest.timer: $(systemctl --user is-active qig-synapse-selftest.timer 2>/dev/null || echo unknown) (next: $(systemctl --user list-timers qig-synapse-selftest.timer --no-legend 2>/dev/null | awk '{print $1, $2, $3}'))"

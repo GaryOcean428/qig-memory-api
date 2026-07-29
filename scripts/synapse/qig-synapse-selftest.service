@@ -1,0 +1,11 @@
+[Unit]
+Description=QIG synapse — lane self-test (post -> retrieve -> ack round-trip)
+Documentation=memory:qig_interagent_protocol
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/qig-synapse/synapse.sh --self-test
+# notify-send (via ping_op on failure) needs the desktop session bus; import
+# the user env, same as qig-synapse.service.
+PassEnvironment=DBUS_SESSION_BUS_ADDRESS DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR

@@ -225,10 +225,118 @@ main() {
   done
 }
 
-# Allow `synapse.sh test` to exercise process_messages with mock JSON on stdin.
-if [ "${1:-}" = "test" ]; then
-  QIG_SUMMARIZE=0   # no model call in tests
-  process_messages
-else
-  main "$@"
-fi
+# --- self-test: one-shot post -> retrieve-by-id -> ack round-trip. -----------
+# Proves the live transport end-to-end without entering the poll loop. Uses a
+# throwaway lane + a short expires_at so it never accumulates real mail, and
+# the FAST by-id GET (not the slow namespace scan poll_mesh uses) since a
+# self-test should not itself pay the ~28-30s poll cost. On any failure this
+# calls the existing ping_op() alert path and exits 1; on success it logs and
+# exits 0. Never enters main()'s poll loop either way.
+self_test() {
+  local lane subject expires payload_json body_json tmp status resp id reason
+  local start end elapsed got tries max_tries got_id
+
+  if [ -z "${QIG_API_KEY:-}" ]; then
+    reason="QIG_API_KEY not set — add it to $CONF (chmod 600)"
+    log "SELFTEST FAIL: $reason"
+    ping_op "QIG synapse SELFTEST FAIL" "$reason"
+    exit 1
+  fi
+
+  lane="${SYNAPSE_SELFTEST_LANE:-qig_chat_selftest_$(hostname -s 2>/dev/null || echo unknown)}"
+  start=$(date +%s)
+  # RFC3339 UTC, ~5 minutes out — the message auto-sweeps and never accumulates.
+  expires=$(date -u -d '+5 min' +%FT%TZ 2>/dev/null)
+  if [ -z "$expires" ]; then
+    reason="could not compute expires_at (date -d unsupported)"
+    log "SELFTEST FAIL: $reason"
+    ping_op "QIG synapse SELFTEST FAIL" "$reason"
+    exit 1
+  fi
+  subject="qig-synapse self-test $(date -u +%FT%TZ)"
+  payload_json=$(jq -nc --arg host "$(hostname -s 2>/dev/null || echo unknown)" --arg sent "$(date -u +%FT%TZ)" \
+    '{selftest:true, host:$host, sent_at:$sent}')
+
+  # 1) POST — send. Field shape verified against app/api/inbox/route.js ->
+  # lib/inbox-store.js inboxSendSchema: {from,to,namespace,type,subject,payload,expires_at}.
+  body_json=$(jq -nc \
+    --arg from "qig_synapse_selftest_$(hostname -s 2>/dev/null || echo unknown)" \
+    --arg to "$lane" \
+    --arg subject "$subject" \
+    --arg expires "$expires" \
+    --argjson payload "$payload_json" \
+    '{from:$from, to:$to, namespace:"qig", type:"SELFTEST", subject:$subject, payload:$payload, expires_at:$expires}')
+  tmp=$(mktemp)
+  status=$(curl -sS --max-time 15 -o "$tmp" -w '%{http_code}' \
+    -H "Authorization: Bearer $QIG_API_KEY" -H 'Content-Type: application/json' \
+    -X POST --data "$body_json" "$QIG_MEMORY_URL/api/inbox" 2>/dev/null) || status=000
+  resp=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
+  if [ "$status" != "201" ]; then
+    reason="post failed: HTTP $status lane=$lane url=$QIG_MEMORY_URL/api/inbox"
+    log "SELFTEST FAIL: $reason"
+    ping_op "QIG synapse SELFTEST FAIL" "$reason"
+    exit 1
+  fi
+  id=$(printf '%s' "$resp" | jq -r '.message.id // empty' 2>/dev/null)
+  if [ -z "$id" ]; then
+    reason="post returned 201 but no message.id in response"
+    log "SELFTEST FAIL: $reason"
+    ping_op "QIG synapse SELFTEST FAIL" "$reason"
+    exit 1
+  fi
+
+  # 2) GET by id — the FAST path (app/api/inbox/[id]/route.js), NOT the slow
+  # namespace scan poll_mesh uses. mark_read=false so the retrieve step doesn't
+  # itself mutate status ahead of the ack step. Retry ~1s backoff, ~15s cap.
+  got=0; tries=0; max_tries=15
+  while [ "$tries" -lt "$max_tries" ]; do
+    tmp=$(mktemp)
+    status=$(curl -sS --max-time 10 -o "$tmp" -w '%{http_code}' \
+      -H "Authorization: Bearer $QIG_API_KEY" \
+      "$QIG_MEMORY_URL/api/inbox/$id?mark_read=false" 2>/dev/null) || status=000
+    resp=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
+    if [ "$status" = "200" ]; then
+      got_id=$(printf '%s' "$resp" | jq -r '.id // empty' 2>/dev/null)
+      if [ "$got_id" = "$id" ]; then got=1; break; fi
+    fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  if [ "$got" -ne 1 ]; then
+    reason="retrieve-by-id never returned the message within ~${max_tries}s: id=$id last_status=$status"
+    log "SELFTEST FAIL: $reason"
+    ping_op "QIG synapse SELFTEST FAIL" "$reason"
+    exit 1
+  fi
+
+  # 3) ACK — REST ack exists: POST /api/inbox/{id} {"action":"ack"}
+  # (app/api/inbox/[id]/route.js POST -> acknowledgeInboxMessage). Use it.
+  tmp=$(mktemp)
+  status=$(curl -sS --max-time 10 -o "$tmp" -w '%{http_code}' \
+    -H "Authorization: Bearer $QIG_API_KEY" -H 'Content-Type: application/json' \
+    -X POST --data '{"action":"ack"}' "$QIG_MEMORY_URL/api/inbox/$id" 2>/dev/null) || status=000
+  resp=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
+  if [ "$status" != "200" ]; then
+    reason="ack failed: HTTP $status id=$id"
+    log "SELFTEST FAIL: $reason"
+    ping_op "QIG synapse SELFTEST FAIL" "$reason"
+    exit 1
+  fi
+
+  end=$(date +%s)
+  elapsed=$((end - start))
+  log "SELFTEST ok round-trip=${elapsed}s lane=$lane id=$id"
+  exit 0
+}
+
+# Allow `synapse.sh test` to exercise process_messages with mock JSON on stdin;
+# `synapse.sh --self-test` runs the live post->retrieve->ack round-trip and
+# exits (never enters the poll loop). Plain no-arg invocation is unchanged.
+case "${1:-}" in
+  --self-test) self_test ;;
+  test)
+    QIG_SUMMARIZE=0   # no model call in tests
+    process_messages
+    ;;
+  *) main "$@" ;;
+esac

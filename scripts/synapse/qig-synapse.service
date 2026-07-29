@@ -1,6 +1,10 @@
 [Unit]
 Description=QIG synapse — always-on inbox watcher / pinger (daemon lane)
-Documentation=memory:qig_interagent_protocol
+# Protocol of record lives at qig-memory key `qig_interagent_protocol`. systemd's
+# Documentation= only accepts http(s)/file/man/info URIs, so `memory:` logged
+# "Invalid URL, ignoring" every boot. Point at the API path that serves the key
+# (auth-gated, but the correct location) so the pointer is valid and honest.
+Documentation=https://quauntum.dev/api/memory/qig_interagent_protocol
 After=default.target
 
 [Service]

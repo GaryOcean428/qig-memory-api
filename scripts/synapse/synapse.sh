@@ -243,7 +243,13 @@ self_test() {
     exit 1
   fi
 
-  lane="${SYNAPSE_SELFTEST_LANE:-qig_chat_selftest_$(hostname -s 2>/dev/null || echo unknown)}"
+  lane="${SYNAPSE_SELFTEST_LANE:-synapse_selftest_$(hostname -s 2>/dev/null || echo unknown)}"
+  # A transport PROBE, not qig-mesh content — default to the `general` namespace so a
+  # non-qig session's hourly self-test never writes the `qig` silo. `inbox_send.namespace`
+  # is a free enum with NO server-side binding to the caller (silo respect is client-side
+  # only), so a probe must not rely on a qig-namespace write. Ruled in the 2026-07-29
+  # synapse test report. Override with SYNAPSE_SELFTEST_NAMESPACE if you truly need qig.
+  ns="${SYNAPSE_SELFTEST_NAMESPACE:-general}"
   start=$(date +%s)
   # RFC3339 UTC, ~5 minutes out — the message auto-sweeps and never accumulates.
   expires=$(date -u -d '+5 min' +%FT%TZ 2>/dev/null)
@@ -262,10 +268,11 @@ self_test() {
   body_json=$(jq -nc \
     --arg from "qig_synapse_selftest_$(hostname -s 2>/dev/null || echo unknown)" \
     --arg to "$lane" \
+    --arg ns "$ns" \
     --arg subject "$subject" \
     --arg expires "$expires" \
     --argjson payload "$payload_json" \
-    '{from:$from, to:$to, namespace:"qig", type:"SELFTEST", subject:$subject, payload:$payload, expires_at:$expires}')
+    '{from:$from, to:$to, namespace:$ns, type:"SELFTEST", subject:$subject, payload:$payload, expires_at:$expires}')
   tmp=$(mktemp)
   status=$(curl -sS --max-time 15 -o "$tmp" -w '%{http_code}' \
     -H "Authorization: Bearer $QIG_API_KEY" -H 'Content-Type: application/json' \

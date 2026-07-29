@@ -8,12 +8,34 @@
 //   2. lib/inbox-store.js sendInboxMessage enforces allowedNamespaces
 //      server-side: a restricted credential cannot write outside its allowed
 //      set (403 namespace_forbidden), an unrestricted one (null) always
-//      passes, and a credential explicitly allowed a namespace can write it.
+//      passes, a credential explicitly allowed a namespace can write it, and
+//      a MALFORMED restriction (non-null, non-array) fails CLOSED rather than
+//      silently passing through as unrestricted.
 //   3. Greps the tree for every sendInboxMessage( call site and asserts the
 //      only two CREDENTIALED (HTTP-bearer-reachable) callers — the REST route
 //      and the MCP inbox_send tool — pass allowedNamespaces, while the known
 //      system-internal callers (council, task-runner, artifact-store,
 //      daily-reviewer) intentionally do not.
+//   4. lib/auth.js namespacesRestricted / namespacesPermit — the single
+//      canonical predicate every INDIRECT-write guard (task creation/run,
+//      council convene, artifact finalize) calls through to — is correct,
+//      including fail-closed behavior on malformed input.
+//   5. LIVE execution of the three guarded MCP tool `execute` functions
+//      (task_create, council_convene, artifact_finalize): a namespaces:['general']
+//      credential is denied by each BEFORE any heavy import/store write, and
+//      (for task_create/artifact_finalize, which fail fast and deterministically
+//      on the absent local Blob credentials rather than making a network call)
+//      an unrestricted or explicitly-permitted credential is proved to get PAST
+//      the guard — the resulting error is a downstream infra error, not the
+//      guard's own. council_convene's ALLOW path is not executed live (it would
+//      either make a real model-provider network call or require a Next.js
+//      request context for its background after() path); its ALLOW behavior is
+//      covered by the exhaustively-tested shared predicate (section 4) plus a
+//      static proof the guard calls it (section 6).
+//   6. Static-source audit that the REST route guards (POST /api/tasks, POST
+//      /api/tasks/[id]/run, POST /api/council, POST /api/helper's canConvene,
+//      POST /api/artifact/finalize) and the council_convene MCP guard are all
+//      wired to the same lib/auth.js predicates tested in section 4.
 //
 // Usage: node scripts/verify-inbox-namespace-binding.mjs
 
@@ -129,6 +151,15 @@ await expectThrow(
   'allowedNamespaces=[] (fail-closed key) + any namespace -> throws namespace_forbidden',
 );
 
+// F4: a MALFORMED allowedNamespaces (non-null, non-array — a bug that hands
+// the store a bad value, e.g. a stray string) must DENY, never silently
+// behave like null/unrestricted.
+await expectThrow(
+  () => sendInboxMessage(baseMsg('qig'), { allowedNamespaces: 'qig' }),
+  (e) => e?.code === 'namespace_forbidden' && e?.status === 403,
+  'allowedNamespaces="qig" (malformed: a string, not an array) -> FAILS CLOSED, does not pass through as unrestricted',
+);
+
 // Each successful send performs exactly 3 writes (ts-index, message, index —
 // see lib/inbox-store.js sendInboxMessage). 3 sends succeeded above (qig/null,
 // qig/["qig"], general/no-options) and 2 were rejected (qig/["general"],
@@ -219,6 +250,204 @@ const mcpRouteSrc = readFileSync(join(root, 'app', 'api', 'mcp', 'route.js'), 'u
 ok(
   'app/api/mcp/route.js forwards principal.namespaces into the tool execute ctx',
   /allowedNamespaces:\s*principal\?\.namespaces/.test(mcpRouteSrc),
+);
+
+// --- 4. namespacesRestricted / namespacesPermit contract (lib/auth.js) -----
+//
+// The single canonical predicate every INDIRECT-write guard calls through to
+// (task creation/run, council convene, artifact finalize — none of these are
+// the caller's own inbox_send, which section 2 already covers directly).
+
+console.log('\n[4] namespacesRestricted / namespacesPermit contract (lib/auth.js)');
+const { namespacesRestricted, namespacesPermit, isNamespaceRestricted, namespacePermits } = await import(
+  pathToFileURL(join(root, 'lib', 'auth.js'))
+);
+
+ok('namespacesRestricted(null) === false (unrestricted)', namespacesRestricted(null) === false);
+ok('namespacesRestricted(undefined) === false (unrestricted)', namespacesRestricted(undefined) === false);
+ok("namespacesRestricted(['general']) === true", namespacesRestricted(['general']) === true);
+ok('namespacesRestricted([]) === true (fail-closed empty allow-list is still a restriction)', namespacesRestricted([]) === true);
+ok(
+  'namespacesRestricted("qig") === true (malformed non-array non-null FAILS CLOSED as restricted, not treated as unrestricted)',
+  namespacesRestricted('qig') === true,
+);
+
+ok('namespacesPermit(null, "qig") === true (unrestricted permits everything)', namespacesPermit(null, 'qig') === true);
+ok("namespacesPermit(['qig','general'], 'qig') === true", namespacesPermit(['qig', 'general'], 'qig') === true);
+ok("namespacesPermit(['general'], 'qig') === false", namespacesPermit(['general'], 'qig') === false);
+ok('namespacesPermit([], "qig") === false (fail-closed empty allow-list permits nothing)', namespacesPermit([], 'qig') === false);
+ok(
+  'namespacesPermit("qig", "qig") === false (malformed non-array FAILS CLOSED even though the string literally equals the namespace)',
+  namespacesPermit('qig', 'qig') === false,
+);
+
+// Principal-shaped wrappers used by the REST routes must delegate identically.
+ok(
+  'isNamespaceRestricted({namespaces:["general"]}) === true',
+  isNamespaceRestricted({ namespaces: ['general'] }) === true,
+);
+ok('isNamespaceRestricted({namespaces:null}) === false', isNamespaceRestricted({ namespaces: null }) === false);
+ok('isNamespaceRestricted({}) === false (no namespaces field at all -> unrestricted)', isNamespaceRestricted({}) === false);
+ok(
+  'namespacePermits({namespaces:["qig","general"]}, "qig") === true',
+  namespacePermits({ namespaces: ['qig', 'general'] }, 'qig') === true,
+);
+ok(
+  'namespacePermits({namespaces:["general"]}, "qig") === false',
+  namespacePermits({ namespaces: ['general'] }, 'qig') === false,
+);
+
+// --- 5. Live execution of the guarded MCP tool `execute` functions ---------
+
+console.log('\n[5] Live guard execution (lib/qig-tools.js toolDefs)');
+const { toolDefs } = await import(pathToFileURL(join(root, 'lib', 'qig-tools.js')));
+
+async function expectGuardThrow(execFn, args, ctx, guardTextMatch, label) {
+  try {
+    await execFn(args, ctx);
+    ok(label, false, 'did not throw at all');
+  } catch (error) {
+    ok(label, guardTextMatch.test(String(error?.message || '')), `got: ${error?.message}`);
+  }
+}
+
+async function expectPastGuard(execFn, args, ctx, guardTextMatch, label) {
+  try {
+    await execFn(args, ctx);
+    // No local Blob credentials exist in this process, so a real success
+    // (no throw at all) would be surprising, but is not itself proof of a
+    // guard failure — only a GUARD-shaped error would be.
+    ok(label, true, 'resolved (unexpected in this env, but proves the guard did not block it)');
+  } catch (error) {
+    const message = String(error?.message || '');
+    ok(label, !guardTextMatch.test(message), `guard appears to have fired: ${message}`);
+  }
+}
+
+// F1 — task_create: ANY restriction denies outright (the task runner's LLM
+// loop holds an unrestricted inbox_send, so no allow-list can be trusted).
+await expectGuardThrow(
+  toolDefs.task_create.execute,
+  { title: 't', instruction: 'i', schedule_kind: 'once' },
+  { allowedNamespaces: ['general'] },
+  /namespace-restricted credentials cannot create autonomous tasks/,
+  'task_create: namespaces=["general"] -> DENIED (thrown before touching task-store)',
+);
+await expectPastGuard(
+  toolDefs.task_create.execute,
+  { title: 't', instruction: 'i', schedule_kind: 'once' },
+  { allowedNamespaces: null },
+  /namespace-restricted/,
+  'task_create: namespaces=null -> PAST THE GUARD (fails downstream on the absent local Blob store, not on the namespace check)',
+);
+
+// Bonus finding (beyond the coordinator's F1-F4 list, closed in the same
+// pass): task_update can rewrite an EXISTING task's instruction (or
+// re-activate a cancelled one) with no guard, and the cron-driven runner that
+// eventually executes it is unrestricted — the same class of bug as F1, via
+// mutation instead of creation.
+await expectGuardThrow(
+  toolDefs.task_update.execute,
+  { id: 'does-not-matter', instruction: 'rewritten' },
+  { allowedNamespaces: ['general'] },
+  /namespace-restricted credentials cannot update autonomous tasks/,
+  'task_update: namespaces=["general"] -> DENIED (thrown before touching task-store)',
+);
+await expectPastGuard(
+  toolDefs.task_update.execute,
+  { id: 'does-not-matter', instruction: 'rewritten' },
+  { allowedNamespaces: null },
+  /namespace-restricted/,
+  'task_update: namespaces=null -> PAST THE GUARD (fails downstream — not_found or the absent local Blob store, not the namespace check)',
+);
+
+// F2 — council_convene: DENIED live (throws before the heavy `./council`
+// import, so this is safe/fast/no-network); ALLOW is proved via section 4's
+// predicate tests + section 6's static wiring check below, NOT executed live
+// (it would either make a real model-provider call or need a Next.js request
+// context for its background after() path).
+await expectGuardThrow(
+  toolDefs.council_convene.execute,
+  { question: 'q' },
+  { allowedNamespaces: ['general'] },
+  /namespace-restricted credentials without "qig" access cannot convene the council/,
+  'council_convene: namespaces=["general"] -> DENIED (thrown before importing ./council at all)',
+);
+
+// F3 — artifact_finalize: same DENY/ALLOW-past-guard pattern as task_create.
+await expectGuardThrow(
+  toolDefs.artifact_finalize.execute,
+  { name: 'verify-artifact', version: 'v1' },
+  { allowedNamespaces: ['general'] },
+  /namespace-restricted credentials without "qig" access cannot finalize artifacts/,
+  'artifact_finalize: namespaces=["general"] -> DENIED (thrown before touching artifact-store)',
+);
+await expectPastGuard(
+  toolDefs.artifact_finalize.execute,
+  { name: 'verify-artifact', version: 'v1' },
+  { allowedNamespaces: ['qig', 'general'] },
+  /namespace-restricted/,
+  'artifact_finalize: namespaces=["qig","general"] -> PAST THE GUARD (qig is allowed; fails downstream on the absent local Blob store)',
+);
+
+// --- 6. Static-source wiring audit: REST routes + the council MCP guard ----
+//
+// Proves each guard call site is wired to the SAME predicate exhaustively
+// tested in section 4, not a local reimplementation that could drift.
+
+console.log('\n[6] Static wiring audit (REST route guards + council_convene MCP guard)');
+
+const tasksRouteSrc = readFileSync(join(root, 'app', 'api', 'tasks', 'route.js'), 'utf8');
+ok(
+  'POST /api/tasks denies via isNamespaceRestricted(principal)',
+  /isNamespaceRestricted\(principal\)/.test(tasksRouteSrc),
+);
+
+const tasksRunRouteSrc = readFileSync(join(root, 'app', 'api', 'tasks', '[id]', 'run', 'route.js'), 'utf8');
+ok(
+  'POST /api/tasks/[id]/run denies via isNamespaceRestricted(auth.principal)',
+  /isNamespaceRestricted\(auth\.principal\)/.test(tasksRunRouteSrc),
+);
+
+const tasksIdRouteSrc = readFileSync(join(root, 'app', 'api', 'tasks', '[id]', 'route.js'), 'utf8');
+ok(
+  'PATCH /api/tasks/[id] denies via isNamespaceRestricted(auth.principal) (bonus finding, closed alongside F1)',
+  /isNamespaceRestricted\(auth\.principal\)/.test(tasksIdRouteSrc),
+);
+ok(
+  'MCP task_update guard uses the shared namespacesRestricted(ctx.allowedNamespaces) predicate',
+  (toolsSrc.match(/if \(namespacesRestricted\(ctx\.allowedNamespaces\)\)/g) || []).length === 2,
+);
+
+const councilRouteSrc = readFileSync(join(root, 'app', 'api', 'council', 'route.js'), 'utf8');
+ok(
+  'POST /api/council denies via namespacePermits(authorization.principal, "qig")',
+  /!namespacePermits\(authorization\.principal,\s*'qig'\)/.test(councilRouteSrc),
+);
+
+const helperRouteSrc = readFileSync(join(root, 'app', 'api', 'helper', 'route.js'), 'utf8');
+ok(
+  'POST /api/helper gates canConvene on namespacePermits(writeCheck.principal, "qig")',
+  /canConvene\s*=\s*!writeCheck\.error\s*&&\s*namespacePermits\(writeCheck\.principal,\s*'qig'\)/.test(helperRouteSrc),
+);
+
+const artifactFinalizeRouteSrc = readFileSync(join(root, 'app', 'api', 'artifact', 'finalize', 'route.js'), 'utf8');
+ok(
+  'POST /api/artifact/finalize denies via namespacePermits(authorization.principal, "qig")',
+  /!namespacePermits\(authorization\.principal,\s*'qig'\)/.test(artifactFinalizeRouteSrc),
+);
+
+ok(
+  'MCP council_convene guard uses the shared namespacesPermit(ctx.allowedNamespaces, "qig") predicate (same fn as section 4/5)',
+  /if \(!namespacesPermit\(ctx\.allowedNamespaces, 'qig'\)\)/.test(toolsSrc),
+);
+ok(
+  'MCP task_create guard uses the shared namespacesRestricted(ctx.allowedNamespaces) predicate',
+  /if \(namespacesRestricted\(ctx\.allowedNamespaces\)\)/.test(toolsSrc),
+);
+ok(
+  'MCP artifact_finalize guard uses the shared namespacesPermit(ctx.allowedNamespaces, "qig") predicate',
+  (toolsSrc.match(/if \(!namespacesPermit\(ctx\.allowedNamespaces, 'qig'\)\)/g) || []).length === 2,
 );
 
 console.log(`\n${passes} passed, ${failures} failed\n`);

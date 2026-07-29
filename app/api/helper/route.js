@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { askHelper, HELPER_GUIDE, HELPER_RESOURCE_URI } from '../../../lib/helper-agent';
 import { deniedResponse, errorResponse, requireApiScope } from '../../../lib/http-auth';
+import { namespacePermits } from '../../../lib/auth';
 
 // Raised from 60 so the helper can convene the council when explicitly asked.
 // council_convene returns immediately and finishes in the background via after(),
@@ -22,9 +23,12 @@ export async function POST(req) {
       return NextResponse.json({ error: 'invalid_input', message: 'question is required' }, { status: 400 });
     }
     // The helper may only convene the council when the caller's own credential
-    // carries write scope — convening persists a ruling and sends inbox mail.
+    // carries write scope AND is not restricted away from the 'qig' namespace
+    // council rulings always deliver to — convening persists a ruling and
+    // sends inbox mail the caller's own credential could not send directly.
     const writeCheck = await requireApiScope(req, 'memory:write');
-    return NextResponse.json(await askHelper({ ...body, canConvene: !writeCheck.error }));
+    const canConvene = !writeCheck.error && namespacePermits(writeCheck.principal, 'qig');
+    return NextResponse.json(await askHelper({ ...body, canConvene }));
   } catch (error) {
     return errorResponse(error);
   }

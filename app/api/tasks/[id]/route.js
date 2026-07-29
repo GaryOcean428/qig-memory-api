@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeDetailed } from '../../../../lib/auth.js';
+import { authorizeDetailed, isNamespaceRestricted } from '../../../../lib/auth.js';
 import { deleteTask, getTask, updateTask, withDerived } from '../../../../lib/task-store.js';
 
 export const maxDuration = 60;
@@ -23,6 +23,17 @@ export async function GET(req, { params }) {
 export async function PATCH(req, { params }) {
   const auth = await authorizeDetailed(req, 'memory:write', { allowOAuth: true });
   if (auth.error) return denied(auth);
+  // Same rule as task creation/run: a restricted credential could otherwise
+  // rewrite an EXISTING task's instruction (or re-activate a cancelled one)
+  // to trigger an arbitrary-namespace inbox_send when the unrestricted
+  // cron-driven task runner next executes it — a mutation-based route around
+  // the create/run guards, not a new capability, so it gets the same deny.
+  if (isNamespaceRestricted(auth.principal)) {
+    return NextResponse.json(
+      { error: 'namespace_restricted', message: 'namespace-restricted credentials cannot update autonomous tasks' },
+      { status: 403 },
+    );
+  }
   const { id } = await params;
   let body;
   try {

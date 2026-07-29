@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { authorizeDetailed } from '../../../lib/auth.js';
+import { authorizeDetailed, isNamespaceRestricted } from '../../../lib/auth.js';
 import { createTask, listTasks, withDerived } from '../../../lib/task-store.js';
 
 export const maxDuration = 60;
@@ -26,6 +26,19 @@ export async function POST(req) {
   const auth = await authorizeDetailed(req, 'memory:write', { allowOAuth: true });
   if (auth.error) return denied(auth);
   const principal = auth.principal;
+  // The autonomous task runner's LLM loop holds an UNRESTRICTED inbox_send
+  // (lib/task-runner.js's buildAgentTools call passes no principal, so the
+  // tool never sees a namespace restriction) — a task's instruction is
+  // attacker-controlled text that can ask the LLM to send to any namespace.
+  // A namespace-restricted credential therefore cannot promise which
+  // namespace a task it creates will end up writing, so it may not create
+  // tasks at all (deny, not thread — see PR discussion).
+  if (isNamespaceRestricted(principal)) {
+    return NextResponse.json(
+      { error: 'namespace_restricted', message: 'namespace-restricted credentials cannot create autonomous tasks' },
+      { status: 403 },
+    );
+  }
   let body;
   try {
     body = await req.json();

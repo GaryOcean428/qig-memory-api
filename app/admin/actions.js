@@ -88,10 +88,16 @@ export async function listApiKeysAction() {
   return listApiKeys();
 }
 
-export async function createApiKeyAction(label) {
+// `options.scopes` / `options.namespaces` are OPTIONAL restrictions an operator
+// can apply when minting a key from the admin UI (e.g. a narrow key for a
+// specific integration). Omitted (the existing UI's call shape) preserves the
+// prior behavior exactly: scopes=null (full access), namespaces=null
+// (unrestricted inbox_send) — see normalizeScopes / normalizeNamespaces in
+// lib/api-keys.js for the null-means-unrestricted contract.
+export async function createApiKeyAction(label, { scopes, namespaces } = {}) {
   const session = await requireSession();
   const createdBy = session.user?.username || session.user?.email || session.user?.name || null;
-  return createApiKey({ label, createdBy });
+  return createApiKey({ label, createdBy, scopes, namespaces });
 }
 
 export async function revokeApiKeyAction(id) {

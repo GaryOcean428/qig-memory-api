@@ -15,9 +15,12 @@ export const maxDuration = 30;
 // (an admin bearer already reads/writes/deletes everything); it only exposes the
 // existing mint capability over the API for headless provisioning. The minted key
 // is scoped DOWN to memory:read + memory:write ONLY (poll the inbox + write the
-// heartbeat — never admin/delete). The plaintext token is returned ONCE; only its
-// SHA-256 hash is persisted (see lib/api-keys.js). Revoke it from the admin UI
-// like any other key.
+// heartbeat — never admin/delete). It is ALSO namespace-restricted to `general`:
+// the daemon's only inbox_send is its own self-test round-trip, which posts to
+// the `general` lane (fix/synapse-selftest-namespace), so a compromised synapse
+// credential cannot write into the `qig` or `bsuite` silos. The plaintext token
+// is returned ONCE; only its SHA-256 hash is persisted (see lib/api-keys.js).
+// Revoke it from the admin UI like any other key.
 export async function POST(req) {
   const auth = await requireApiScope(req, 'memory:admin');
   if (auth.error) return deniedResponse(auth);
@@ -34,9 +37,13 @@ export async function POST(req) {
       label,
       createdBy: `synapse-provision:${auth.principal?.key_id || 'admin'}`,
       scopes: ['memory:read', 'memory:write'],
+      namespaces: ['general'],
     });
     // token is shown exactly once — the caller writes it to synapse.env.
-    return NextResponse.json({ token, key, scopes: ['memory:read', 'memory:write'] }, { status: 201 });
+    return NextResponse.json(
+      { token, key, scopes: ['memory:read', 'memory:write'], namespaces: ['general'] },
+      { status: 201 },
+    );
   } catch (error) {
     return errorResponse(error);
   }

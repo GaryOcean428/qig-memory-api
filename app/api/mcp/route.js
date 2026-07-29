@@ -56,7 +56,10 @@ const handler = createMcpHandler(
             }
             // Forward the caller identity for attribution (e.g. task createdBy).
             const label = principal?.label || principal?.sub || principal?.name || 'api';
-            const result = await def.execute(args ?? {}, { principal: label });
+            const result = await def.execute(args ?? {}, {
+              principal: label,
+              allowedNamespaces: principal?.namespaces ?? null,
+            });
             // Compact JSON, not pretty-printed: indentation is pure context tax
             // on every tool result and models read minified JSON perfectly well.
             return { content: [{ type: 'text', text: JSON.stringify(result) }] };

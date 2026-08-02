@@ -17,10 +17,21 @@ CONF="$CONF_DIR/synapse.env"
 mkdir -p "$SHARE" "$CONF_DIR" "$UNIT_DIR"
 
 install -m 0755 "$HERE/synapse.sh" "$SHARE/synapse.sh"
+install -m 0755 "$HERE/dispatch.sh" "$SHARE/dispatch.sh"
 install -m 0644 "$HERE/qig-synapse.service" "$UNIT_DIR/qig-synapse.service"
 install -m 0644 "$HERE/qig-synapse-selftest.service" "$UNIT_DIR/qig-synapse-selftest.service"
 install -m 0644 "$HERE/qig-synapse-selftest.timer" "$UNIT_DIR/qig-synapse-selftest.timer"
-echo "installed: $SHARE/synapse.sh + $UNIT_DIR/qig-synapse.service + $UNIT_DIR/qig-synapse-selftest.{service,timer}"
+echo "installed: $SHARE/synapse.sh + $SHARE/dispatch.sh + $UNIT_DIR/qig-synapse.service + $UNIT_DIR/qig-synapse-selftest.{service,timer}"
+
+# Seed the wakeable-lanes registry (agent-to-agent dispatch). Never overwrite an
+# existing one — it holds the operator's lane->cwd map. Dispatch stays OFF until
+# QIG_DISPATCH=1 is set in synapse.env regardless.
+if [ ! -f "$CONF_DIR/lanes.json" ]; then
+  install -m 0644 "$HERE/lanes.example.json" "$CONF_DIR/lanes.json"
+  echo "created: $CONF_DIR/lanes.json from template (dispatch off until QIG_DISPATCH=1)"
+else
+  echo "kept existing: $CONF_DIR/lanes.json (not overwritten)"
+fi
 
 if [ ! -f "$CONF" ]; then
   install -m 0600 "$HERE/synapse.env.example" "$CONF"

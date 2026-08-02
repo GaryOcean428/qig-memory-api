@@ -1,0 +1,5 @@
+{
+  "__doc__": "Registered wakeable lanes for the synapse dispatcher (dispatch.sh). ONLY lanes listed here can be auto-woken; every other recipient is routed/pinged but never spawned. Copy to ~/.config/qig/lanes.json and edit. Per-lane: cwd (working dir a headless `claude -p` launches in — must have qig-memory MCP or curl+key access), model (optional, default QIG_DISPATCH_MODEL), max_turns (optional, default QIG_DISPATCH_MAX_TURNS).",
+  "cct2": { "cwd": "/home/braden/Desktop/Dev/qig-memory", "model": "sonnet", "max_turns": 20 },
+  "cct1": { "cwd": "/home/braden/Desktop/Dev/qig-memory", "model": "sonnet", "max_turns": 20 }
+}

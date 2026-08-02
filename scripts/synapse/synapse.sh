@@ -30,6 +30,9 @@ CONF="${QIG_SYNAPSE_ENV:-$HOME/.config/qig/synapse.env}"
 : "${QIG_SUMMARIZE:=1}"           # 1 = enrich the ping with a local one-liner (see summarize backend)
 : "${QIG_HEARTBEAT_EVERY:=7}"     # write a liveness heartbeat every N polls (~5min at 45s)
 : "${QIG_PRESENCE_STALE_MIN:=20}" # a lane whose presence has not refreshed in this many minutes is "dark"
+: "${QIG_NAMESPACES:=qig bsuite general}"  # inbox namespaces to sweep (space-separated). Was qig-only.
+: "${QIG_DISPATCH:=0}"            # 1 = also WAKE the receiving lane as a headless agent (see dispatch.sh)
+: "${QIG_SYNAPSE_DISPATCH:=$HOME/.local/share/qig-synapse/dispatch.sh}" # dispatcher location
 
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}/qig-synapse"
 mkdir -p "$STATE"
@@ -118,6 +121,7 @@ $msg"
 # Emits a ping for each NOT-yet-seen message whose type is urgent; marks all
 # scanned messages seen so non-urgent ones never re-scan.
 process_messages() {
+  local ns="${1:-qig}"   # which namespace this batch came from (for the ping label + dispatch)
   local upper_urgent; upper_urgent=" $(printf '%s' "$QIG_URGENT_TYPES" | tr '[:lower:]' '[:upper:]') "
   local watch_lc=""; [ -n "$QIG_WATCH" ] && watch_lc=" $(printf '%s' "$QIG_WATCH" | tr '[:upper:]' '[:lower:]') "
   local m id typ frm to subj brief to_lc where
@@ -143,7 +147,15 @@ process_messages() {
         brief=$(printf '%s' "$m" | summarize)
         [ -z "$brief" ] && brief="$subj"
         where=$(presence_for "$to")
-        ping_op "QIG $typ — $frm → $to${where:+ ($where)}" "$brief"
+        ping_op "[$ns] $typ — $frm → $to${where:+ ($where)}" "$brief"
+        # Opt-in: also WAKE the receiving lane as a headless agent (agent-to-agent
+        # coordination). All allow-list / depth / rate / self-reply guards live in
+        # dispatch.sh; a missing/negative gate there is a no-op, never a runaway.
+        # The namespace is passed through so the woken agent replies in-lane.
+        if [ "$QIG_DISPATCH" = 1 ] && [ -x "$QIG_SYNAPSE_DISPATCH" ]; then
+          "$QIG_SYNAPSE_DISPATCH" "$id" "$frm" "$to" "$typ" "$subj" "$ns" >/dev/null 2>&1 \
+            || log "DISPATCH call failed for $id -> $to"
+        fi
         ;;
     esac
     printf '%s\n' "$id" >> "$SEEN"
@@ -169,31 +181,41 @@ process_messages() {
 # call per QIG_POLL_SECONDS): a hot retry loop on an auth failure is itself a
 # bug (see the /api/coordize 401-flood root-cause fix this shipped alongside).
 CONSEC_AUTH_FAIL=0
-poll_mesh() {
-  local url tmp status body
-  url="$QIG_MEMORY_URL/api/inbox?namespace=qig&status=unread&include_broadcast=true&limit=50"
+# poll ONE namespace. Returns: 0 = 200/OK, 2 = auth failure, 1 = other/network.
+# Feeds a 200 body to process_messages tagged with its namespace.
+poll_one() {
+  local ns="$1" url tmp status body
+  url="$QIG_MEMORY_URL/api/inbox?namespace=$ns&status=unread&include_broadcast=true&limit=50"
   tmp=$(mktemp)
   status=$(curl -sS --max-time 45 -H "Authorization: Bearer $QIG_API_KEY" -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null) || status=000
   body=$(cat "$tmp" 2>/dev/null); rm -f "$tmp"
   case "$status" in
-    200)
-      CONSEC_AUTH_FAIL=0
-      printf '%s' "$body" | process_messages
-      ;;
-    401|403)
-      CONSEC_AUTH_FAIL=$((CONSEC_AUTH_FAIL + 1))
-      log "poll: AUTH_FAILED status=$status (consecutive=$CONSEC_AUTH_FAIL) — QIG_API_KEY missing/invalid/revoked, check $CONF"
-      if [ "$CONSEC_AUTH_FAIL" -eq 3 ]; then
-        ping_op "QIG synapse — auth failing" "QIG_API_KEY rejected (HTTP $status) for 3 consecutive polls — daemon cannot see inbox mail. Check ~/.config/qig/synapse.env."
-      fi
-      ;;
-    000)
-      log "poll: network/timeout (no HTTP response within 45s)"
-      ;;
-    *)
-      log "poll: unexpected status=$status"
-      ;;
+    200)     printf '%s' "$body" | process_messages "$ns"; return 0 ;;
+    401|403) log "poll[$ns]: AUTH_FAILED status=$status — QIG_API_KEY missing/invalid/revoked, check $CONF"; return 2 ;;
+    000)     log "poll[$ns]: network/timeout (no HTTP response within 45s)"; return 1 ;;
+    *)       log "poll[$ns]: unexpected status=$status"; return 1 ;;
   esac
+}
+
+# Sweep every configured namespace each cycle (was a single hardcoded qig poll).
+# Auth-streak escalation is per-CYCLE: any namespace returning 200 resets it; a
+# cycle where every namespace 401/403s (bad key → all fail) advances it once.
+poll_mesh() {
+  local ns rc got200=0 authfail=0
+  for ns in $QIG_NAMESPACES; do
+    poll_one "$ns"; rc=$?
+    [ "$rc" -eq 0 ] && got200=1
+    [ "$rc" -eq 2 ] && authfail=1
+  done
+  if [ "$got200" -eq 1 ]; then
+    CONSEC_AUTH_FAIL=0
+  elif [ "$authfail" -eq 1 ]; then
+    CONSEC_AUTH_FAIL=$((CONSEC_AUTH_FAIL + 1))
+    log "poll: AUTH_FAILED across all namespaces (consecutive=$CONSEC_AUTH_FAIL)"
+    if [ "$CONSEC_AUTH_FAIL" -eq 3 ]; then
+      ping_op "synapse — auth failing" "QIG_API_KEY rejected (HTTP 401/403) for 3 consecutive polls — daemon cannot see inbox mail. Check ~/.config/qig/synapse.env."
+    fi
+  fi
 }
 
 # --- liveness heartbeat: a memory record lanes can read (synapse_live?). -----
@@ -216,7 +238,7 @@ main() {
     log "FATAL: QIG_API_KEY unset"
     exit 78   # EX_CONFIG — systemd will not spin-loop on this
   fi
-  log "up: $QIG_MEMORY_URL every ${QIG_POLL_SECONDS}s urgent=[$QIG_URGENT_TYPES] watch=[${QIG_WATCH:-<all lanes>}]"
+  log "up: $QIG_MEMORY_URL every ${QIG_POLL_SECONDS}s namespaces=[$QIG_NAMESPACES] urgent=[$QIG_URGENT_TYPES] watch=[${QIG_WATCH:-<all lanes>}] dispatch=$QIG_DISPATCH"
   local n=0
   while true; do
     poll_mesh

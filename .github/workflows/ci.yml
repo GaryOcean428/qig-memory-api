@@ -50,3 +50,11 @@ jobs:
       # not a one-off manual check.
       - name: Verify inbox namespace binding
         run: npm run verify:namespace-binding
+
+      # Proves the search index cannot silently drop records written since its
+      # last rebuild (the precedent-book-invisible-to-search defect). The index
+      # is self-verifying: it stamps a coverage watermark and searchMemory only
+      # trusts it when the corpus is provably unchanged, else full-scans. A
+      # regression here means stale-index misses can return.
+      - name: Verify search index freshness
+        run: npm run verify:search-index

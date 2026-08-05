@@ -11,7 +11,8 @@
     "migrate:memory:dry-run": "node scripts/migrate-memory-to-private.mjs",
     "migrate:memory:apply": "node scripts/migrate-memory-to-private.mjs --apply",
     "migrate:legacy:dry-run": "node scripts/migrate-legacy-store.mjs",
-    "migrate:legacy:apply": "node scripts/migrate-legacy-store.mjs --apply"
+    "migrate:legacy:apply": "node scripts/migrate-legacy-store.mjs --apply",
+    "verify:search-index": "node scripts/verify-search-index-freshness.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.23",

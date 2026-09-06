@@ -83,7 +83,7 @@ export default async function OAuthConsentPage({ searchParams }) {
         </div>
 
         <p className="mt-5 break-all text-xs leading-relaxed text-muted-foreground">
-          After approval, you will return to <span className="font-mono text-foreground">{new URL(params.redirect_uri).origin}</span>.
+          After approval, you will return to <span className="font-mono text-foreground">{(() => { try { const u = new URL(params.redirect_uri); return u.protocol === 'http:' || u.protocol === 'https:' ? u.origin : String(params.redirect_uri); } catch { return String(params.redirect_uri); } })()}</span>.
         </p>
 
         <form action="/api/oauth/authorize" method="post" className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

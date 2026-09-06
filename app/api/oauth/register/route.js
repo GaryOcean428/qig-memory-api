@@ -26,7 +26,7 @@ export async function POST(request) {
   const redirectUris = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
   if (!redirectUris.length || redirectUris.length > 10 || redirectUris.some((uri) => !isSafeRedirectUri(uri))) {
     return NextResponse.json(
-      { error: 'invalid_redirect_uri', error_description: 'Use HTTPS or a loopback HTTP redirect URI.' },
+      { error: 'invalid_redirect_uri', error_description: 'Use HTTPS, a loopback HTTP redirect URI, or a private-use URI scheme (e.g. cursor://).' },
       { status: 400 },
     );
   }
